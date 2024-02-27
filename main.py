@@ -193,8 +193,15 @@ if __name__ == "__main__":
         folder_paths.set_temp_directory(temp_dir)
     cleanup_temp()
 
-    loop = asyncio.new_event_loop() # 创建新的事件循环对象
-    asyncio.set_event_loop(loop)  # 将新创建的事件循环对象设置为当前的事件循环
+    if args.windows_standalone_build:
+        try:
+            import new_updater
+            new_updater.update_windows_updater()
+        except:
+            pass
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     server = server.PromptServer(loop)
     q = execution.PromptQueue(server)
 
