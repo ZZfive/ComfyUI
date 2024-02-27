@@ -18,7 +18,7 @@ def execute_prestartup_script():
             print(f"Failed to execute startup-script: {script_path} / {e}")
         return False
 
-    node_paths = folder_paths.get_folder_paths("custom_nodes")
+    node_paths = folder_paths.get_folder_paths("custom_nodes")  # 获取自定义节点路径
     for custom_node_path in node_paths:
         possible_modules = os.listdir(custom_node_path)
         node_prestartup_times = []
@@ -26,12 +26,12 @@ def execute_prestartup_script():
         for possible_module in possible_modules:
             module_path = os.path.join(custom_node_path, possible_module)
             if os.path.isfile(module_path) or module_path.endswith(".disabled") or module_path == "__pycache__":
-                continue
+                continue  # 能加在的节点需要时路径，module_path不是路径直接跳过
 
-            script_path = os.path.join(module_path, "prestartup_script.py")
+            script_path = os.path.join(module_path, "prestartup_script.py")  # 找到自定义节点目录下的prestartup_script.py文件
             if os.path.exists(script_path):
                 time_before = time.perf_counter()
-                success = execute_script(script_path)
+                success = execute_script(script_path)  # 执行自定义节点中的prestartup_script.py文件
                 node_prestartup_times.append((time.perf_counter() - time_before, module_path, success))
     if len(node_prestartup_times) > 0:
         print("\nPrestartup times for custom nodes:")
@@ -73,15 +73,15 @@ if __name__ == "__main__":
 import comfy.utils
 import yaml
 
-import execution
-import server
+import execution  # 推理执行
+import server  # web服务
 from server import BinaryEventTypes
 from nodes import init_custom_nodes
 import comfy.model_management
 
 def cuda_malloc_warning():
-    device = comfy.model_management.get_torch_device()
-    device_name = comfy.model_management.get_torch_device_name(device)
+    device = comfy.model_management.get_torch_device()  # 获取device对象
+    device_name = comfy.model_management.get_torch_device_name(device)  # 获取device名称
     cuda_malloc_warning = False
     if "cudaMallocAsync" in device_name:
         for b in cuda_malloc.blacklist:
@@ -162,7 +162,7 @@ def hijack_progress(server):
 def cleanup_temp():
     temp_dir = folder_paths.get_temp_directory()
     if os.path.exists(temp_dir):
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        shutil.rmtree(temp_dir, ignore_errors=True)  # 递归删除路径temp_dir
 
 
 def load_extra_path_config(yaml_path):
@@ -193,8 +193,8 @@ if __name__ == "__main__":
         folder_paths.set_temp_directory(temp_dir)
     cleanup_temp()
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    loop = asyncio.new_event_loop() # 创建新的事件循环对象
+    asyncio.set_event_loop(loop)  # 将新创建的事件循环对象设置为当前的事件循环
     server = server.PromptServer(loop)
     q = execution.PromptQueue(server)
 

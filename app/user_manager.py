@@ -31,7 +31,7 @@ class UserManager():
         else:
             self.users = {"default": "default"}
 
-    def get_request_user_id(self, request):
+    def get_request_user_id(self, request):  # 从请求中获取user
         user = "default"
         if args.multi_user and "comfy-user" in request.headers:
             user = request.headers["comfy-user"]
@@ -41,7 +41,7 @@ class UserManager():
 
         return user
 
-    def get_request_user_filepath(self, request, file, type="userdata", create_dir=True):
+    def get_request_user_filepath(self, request, file, type="userdata", create_dir=True):  # 获取用户绝对目录
         global user_directory
 
         if type == "userdata":
@@ -50,10 +50,10 @@ class UserManager():
             raise KeyError("Unknown filepath type:" + type)
 
         user = self.get_request_user_id(request)
-        path = user_root = os.path.abspath(os.path.join(root_dir, user))
+        path = user_root = os.path.abspath(os.path.join(root_dir, user)) # 获取用户的绝对路径
 
         # prevent leaving /{type}
-        if os.path.commonpath((root_dir, user_root)) != root_dir:
+        if os.path.commonpath((root_dir, user_root)) != root_dir:  # 检查共同的路劲前缀是不是root_dir
             return None
 
         parent = user_root
@@ -69,7 +69,7 @@ class UserManager():
 
         return path
 
-    def add_user(self, name):
+    def add_user(self, name):  # 增加用户
         name = name.strip()
         if not name:
             raise ValueError("username not provided")
@@ -87,7 +87,7 @@ class UserManager():
     def add_routes(self, routes):
         self.settings.add_routes(routes)
 
-        @routes.get("/users")
+        @routes.get("/users")  # 获取用户信息
         async def get_users(request):
             if args.multi_user:
                 return web.json_response({"storage": "server", "users": self.users})
@@ -98,7 +98,7 @@ class UserManager():
                     "migrated": os.path.exists(user_dir)
                 })
 
-        @routes.post("/users")
+        @routes.post("/users")  # 添加用户
         async def post_users(request):
             body = await request.json()
             username = body["username"]
@@ -108,7 +108,7 @@ class UserManager():
             user_id = self.add_user(username)
             return web.json_response(user_id)
 
-        @routes.get("/userdata/{file}")
+        @routes.get("/userdata/{file}")  # 获取用户的配置文件路径
         async def getuserdata(request):
             file = request.match_info.get("file", None)
             if not file:
@@ -123,7 +123,7 @@ class UserManager():
             
             return web.FileResponse(path)
 
-        @routes.post("/userdata/{file}")
+        @routes.post("/userdata/{file}")  # 重写指定的用户文件
         async def post_userdata(request):
             file = request.match_info.get("file", None)
             if not file:

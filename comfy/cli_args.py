@@ -4,7 +4,7 @@ import comfy.options
 
 class EnumAction(argparse.Action):
     """
-    Argparse action for handling Enums
+    Argparse action for handling Enums，处理枚举类型参数
     """
     def __init__(self, **kwargs):
         # Pop off the type value
@@ -27,8 +27,8 @@ class EnumAction(argparse.Action):
 
     def __call__(self, parser, namespace, values, option_string=None):
         # Convert value back into an Enum
-        value = self._enum(values)
-        setattr(namespace, self.dest, value)
+        value = self._enum(values)  # 将命令行传入的值转换为枚举类型
+        setattr(namespace, self.dest, value)  # 将值设置到命名空间中
 
 
 parser = argparse.ArgumentParser()
@@ -45,7 +45,7 @@ parser.add_argument("--input-directory", type=str, default=None, help="Set the C
 parser.add_argument("--auto-launch", action="store_true", help="Automatically launch ComfyUI in the default browser.")
 parser.add_argument("--disable-auto-launch", action="store_true", help="Disable auto launching the browser.")
 parser.add_argument("--cuda-device", type=int, default=None, metavar="DEVICE_ID", help="Set the id of the cuda device this instance will use.")
-cm_group = parser.add_mutually_exclusive_group()
+cm_group = parser.add_mutually_exclusive_group()  # 创建了一个互斥组，在命令行中指定了互斥组中的一个参数后，就不能再指定该组中的其他参数
 cm_group.add_argument("--cuda-malloc", action="store_true", help="Enable cudaMallocAsync (enabled by default for torch 2.0 and up).")
 cm_group.add_argument("--disable-cuda-malloc", action="store_true", help="Disable cudaMallocAsync.")
 

@@ -68,16 +68,16 @@ def create_cors_middleware(allowed_origin: str):
 
 class PromptServer():
     def __init__(self, loop):
-        PromptServer.instance = self
+        PromptServer.instance = self  # 单例模式，此类只能实例化一个对象
 
         mimetypes.init()
         mimetypes.types_map['.js'] = 'application/javascript; charset=utf-8'
 
-        self.user_manager = UserManager()
+        self.user_manager = UserManager()  # 初始化用户管理模块
         self.supports = ["custom_nodes_from_web"]
         self.prompt_queue = None
         self.loop = loop
-        self.messages = asyncio.Queue()
+        self.messages = asyncio.Queue()  # 异步队列
         self.number = 0
 
         middlewares = [cache_control]
@@ -89,7 +89,7 @@ class PromptServer():
         self.sockets = dict()
         self.web_root = os.path.join(os.path.dirname(
             os.path.realpath(__file__)), "web")
-        routes = web.RouteTableDef()
+        routes = web.RouteTableDef()  # 实例化定义路由函数的装饰器对象
         self.routes = routes
         self.last_node_id = None
         self.client_id = None
