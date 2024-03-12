@@ -15,15 +15,9 @@ from PIL import Image, ImageOps
 from PIL.PngImagePlugin import PngInfo
 from io import BytesIO
 
-try:
-    import aiohttp
-    from aiohttp import web
-except ImportError:
-    print("Module 'aiohttp' not installed. Please install it via:")
-    print("pip install aiohttp")
-    print("or")
-    print("pip install -r requirements.txt")
-    sys.exit()
+import aiohttp
+from aiohttp import web
+import logging
 
 import mimetypes
 from comfy.cli_args import args
@@ -42,7 +36,7 @@ async def send_socket_catch_exception(function, message):
     try:
         await function(message)  # 发送消息到websocket的异步函数
     except (aiohttp.ClientError, aiohttp.ClientPayloadError, ConnectionResetError) as err:
-        print("send error:", err)
+        logging.warning("send error: {}".format(err))
 
 
 @web.middleware
@@ -123,7 +117,7 @@ class PromptServer():  # 整个comfyui的服务类
                     
                 async for msg in ws:  # 使用异步循环接收客户端发送的消息
                     if msg.type == aiohttp.WSMsgType.ERROR:
-                        print('ws connection closed with exception %s' % ws.exception())
+                        logging.warning('ws connection closed with exception %s' % ws.exception())
             finally:
                 self.sockets.pop(sid, None)  # 从self.sockets字典中移除与sid关联的WebSocket对象，但建立的ws连接并没有关闭
             return ws
@@ -424,8 +418,8 @@ class PromptServer():  # 整个comfyui的服务类
                 try:
                     out[x] = node_info(x)
                 except Exception as e:
-                    print(f"[ERROR] An error occurred while retrieving information for the '{x}' node.", file=sys.stderr)
-                    traceback.print_exc()
+                    logging.error(f"[ERROR] An error occurred while retrieving information for the '{x}' node.")
+                    logging.error(traceback.format_exc())
             return web.json_response(out)
 
         @routes.get("/object_info/{node_class}")
@@ -458,7 +452,7 @@ class PromptServer():  # 整个comfyui的服务类
 
         @routes.post("/prompt")
         async def post_prompt(request):
-            print("got prompt")
+            logging.info("got prompt")
             resp_code = 200
             out_string = ""
             json_data =  await request.json()
@@ -490,7 +484,7 @@ class PromptServer():  # 整个comfyui的服务类
                     response = {"prompt_id": prompt_id, "number": number, "node_errors": valid[3]}
                     return web.json_response(response)
                 else:
-                    print("invalid prompt:", valid[1])
+                    logging.warning("invalid prompt: {}".format(valid[1]))
                     return web.json_response({"error": valid[1], "node_errors": valid[3]}, status=400)
             else:
                 return web.json_response({"error": "no prompt", "node_errors": []}, status=400)
@@ -638,8 +632,8 @@ class PromptServer():  # 整个comfyui的服务类
         await site.start()
 
         if verbose:
-            print("Starting server\n")
-            print("To see the GUI go to: http://{}:{}".format(address, port))
+            logging.info("Starting server\n")
+            logging.info("To see the GUI go to: http://{}:{}".format(address, port))
         if call_on_start is not None:
             call_on_start(address, port)
 
@@ -651,7 +645,7 @@ class PromptServer():  # 整个comfyui的服务类
             try:
                 json_data = handler(json_data)
             except Exception as e:
-                print(f"[ERROR] An error occurred during the on_prompt_handler processing")
-                traceback.print_exc()
+                logging.warning(f"[ERROR] An error occurred during the on_prompt_handler processing")
+                logging.warning(traceback.format_exc())
 
         return json_data
