@@ -1,11 +1,11 @@
 import os
 import shutil
 
-base_path = os.path.dirname(os.path.realpath(__file__))
+base_path = os.path.dirname(os.path.realpath(__file__))  # 项目根目录
 
 
 def update_windows_updater():
-    top_path = os.path.dirname(base_path)
+    top_path = os.path.dirname(base_path)  # 根目录的父目录
     updater_path = os.path.join(base_path, ".ci/update_windows/update.py")
     bat_path = os.path.join(base_path, ".ci/update_windows/update_comfyui.bat")
 
@@ -13,6 +13,7 @@ def update_windows_updater():
     dest_bat_path = os.path.join(top_path, "update/update_comfyui.bat")
     dest_bat_deps_path = os.path.join(top_path, "update/update_comfyui_and_python_dependencies.bat")
 
+    # 如果dest_bat_path存在且可读取，就加载其中contents，如果不存在，直接返回
     try:
         with open(dest_bat_path, 'rb') as f:
             contents = f.read()

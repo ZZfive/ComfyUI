@@ -32,24 +32,28 @@ import comfy.model_management
 
 from app.user_manager import UserManager
 
+
 class BinaryEventTypes:
     PREVIEW_IMAGE = 1
     UNENCODED_PREVIEW_IMAGE = 2
 
+
 async def send_socket_catch_exception(function, message):
     try:
-        await function(message)
+        await function(message)  # 发送消息到websocket的异步函数
     except (aiohttp.ClientError, aiohttp.ClientPayloadError, ConnectionResetError) as err:
         print("send error:", err)
+
 
 @web.middleware
 async def cache_control(request: web.Request, handler):
     response: web.Response = await handler(request)
     if request.path.endswith('.js') or request.path.endswith('.css'):
-        response.headers.setdefault('Cache-Control', 'no-cache')
+        response.headers.setdefault('Cache-Control', 'no-cache')  # 设置响应头 Cache-Control 为 'no-cache'，表示不缓存该文件
     return response
 
-def create_cors_middleware(allowed_origin: str):
+
+def create_cors_middleware(allowed_origin: str):  # 用于创建 CORS（跨源资源共享）中间件的函数
     @web.middleware
     async def cors_middleware(request: web.Request, handler):
         if request.method == "OPTIONS":
@@ -58,15 +62,16 @@ def create_cors_middleware(allowed_origin: str):
         else:
             response = await handler(request)
 
-        response.headers['Access-Control-Allow-Origin'] = allowed_origin
-        response.headers['Access-Control-Allow-Methods'] = 'POST, GET, DELETE, PUT, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Allow-Origin'] = allowed_origin  # 默认为None，表示未指定允许访问该资源的来源，对于跨域请求浏览器将不会允许从任何来源访问该资源
+        response.headers['Access-Control-Allow-Methods'] = 'POST, GET, DELETE, PUT, OPTIONS'  # 指定允许进行跨域请求的 HTTP 方法
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'  # 指定允许访问的 HTTP 头部字段
+        response.headers['Access-Control-Allow-Credentials'] = 'true'  # 指定是否允许发送身份凭证
         return response
 
     return cors_middleware
 
-class PromptServer():
+
+class PromptServer():  # 整个comfyui的服务类
     def __init__(self, loop):
         PromptServer.instance = self  # 单例模式，此类只能实例化一个对象
 
@@ -85,7 +90,7 @@ class PromptServer():
             middlewares.append(create_cors_middleware(args.enable_cors_header))
 
         max_upload_size = round(args.max_upload_size * 1024 * 1024)
-        self.app = web.Application(client_max_size=max_upload_size, middlewares=middlewares)
+        self.app = web.Application(client_max_size=max_upload_size, middlewares=middlewares)  # 初始化服务对象，同时配置中间件
         self.sockets = dict()
         self.web_root = os.path.join(os.path.dirname(
             os.path.realpath(__file__)), "web")
@@ -97,43 +102,43 @@ class PromptServer():
         self.on_prompt_handlers = []
 
         @routes.get('/ws')
-        async def websocket_handler(request):
-            ws = web.WebSocketResponse()
-            await ws.prepare(request)
-            sid = request.rel_url.query.get('clientId', '')
+        async def websocket_handler(request):  # 处理websocker连接
+            ws = web.WebSocketResponse()  # 创建一个新的WebSocketResponse对象，用于处理WebSocket连接
+            await ws.prepare(request)  # 准备WebSocket连接，这通常涉及到设置HTTP响应头等
+            sid = request.rel_url.query.get('clientId', '')  # 从请求的查询参数中获取'clientId'，如果不存在则默认为空字符串
             if sid:
                 # Reusing existing session, remove old
-                self.sockets.pop(sid, None)
+                self.sockets.pop(sid, None)  # 如果存在sid，直接复用
             else:
-                sid = uuid.uuid4().hex
+                sid = uuid.uuid4().hex  # 不存在就新建一个sid
 
-            self.sockets[sid] = ws
+            self.sockets[sid] = ws  # 将新的WebSocket对象与sid关联，并存储在self.sockets字典中
 
             try:
-                # Send initial state to the new client
+                # Send initial state to the new client，给新连接的客户端发送初始状态
                 await self.send("status", { "status": self.get_queue_info(), 'sid': sid }, sid)
                 # On reconnect if we are the currently executing client send the current node
                 if self.client_id == sid and self.last_node_id is not None:
-                    await self.send("executing", { "node": self.last_node_id }, sid)
+                    await self.send("executing", { "node": self.last_node_id }, sid)  # 给客户端发送中间状态
                     
-                async for msg in ws:
+                async for msg in ws:  # 使用异步循环接收客户端发送的消息
                     if msg.type == aiohttp.WSMsgType.ERROR:
                         print('ws connection closed with exception %s' % ws.exception())
             finally:
-                self.sockets.pop(sid, None)
+                self.sockets.pop(sid, None)  # 从self.sockets字典中移除与sid关联的WebSocket对象，但建立的ws连接并没有关闭
             return ws
 
         @routes.get("/")
-        async def get_root(request):
+        async def get_root(request):  # 返回web_root目录下的index.html文件
             return web.FileResponse(os.path.join(self.web_root, "index.html"))
 
         @routes.get("/embeddings")
-        def get_embeddings(self):
+        def get_embeddings(self):  # embeddings查询
             embeddings = folder_paths.get_filename_list("embeddings")
             return web.json_response(list(map(lambda a: os.path.splitext(a)[0], embeddings)))
 
         @routes.get("/extensions")
-        async def get_extensions(request):
+        async def get_extensions(request):  # extensions查询
             files = glob.glob(os.path.join(
                 glob.escape(self.web_root), 'extensions/**/*.js'), recursive=True)
             
@@ -146,7 +151,7 @@ class PromptServer():
 
             return web.json_response(extensions)
 
-        def get_dir_by_type(dir_type):
+        def get_dir_by_type(dir_type):  # 根据路径类型获取对应的路径
             if dir_type is None:
                 dir_type = "input"
 
@@ -540,16 +545,16 @@ class PromptServer():
         for name, dir in nodes.EXTENSION_WEB_DIRS.items():
             self.app.add_routes([
                 web.static('/extensions/' + urllib.parse.quote(name), dir),
-            ])
+            ])  # 对于每个扩展，将其静态文件目录添加为路由。这意味着可以通过 /extensions/<extension_name> 访问每个扩展的静态文件
 
         self.app.add_routes([
             web.static('/', self.web_root),
-        ])
+        ])  # 将应用程序的根目录设置为静态文件服务，这意味着可以通过根目录访问应用程序的静态文件
 
     def get_queue_info(self):
         prompt_info = {}
         exec_info = {}
-        exec_info['queue_remaining'] = self.prompt_queue.get_tasks_remaining()
+        exec_info['queue_remaining'] = self.prompt_queue.get_tasks_remaining()  # 任务队列中仍待处理的任务数量
         prompt_info['exec_info'] = exec_info
         return prompt_info
 
@@ -607,11 +612,11 @@ class PromptServer():
     async def send_json(self, event, data, sid=None):
         message = {"type": event, "data": data}
 
-        if sid is None:
+        if sid is None:  # 如果sid不存在，会将data广播给所有ws连接
             sockets = list(self.sockets.values())
             for ws in sockets:
                 await send_socket_catch_exception(ws.send_json, message)
-        elif sid in self.sockets:
+        elif sid in self.sockets:  # 如果sid存在，发送至对应的ws连接
             await send_socket_catch_exception(self.sockets[sid].send_json, message)
 
     def send_sync(self, event, data, sid=None):
