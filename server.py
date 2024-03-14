@@ -74,9 +74,9 @@ class PromptServer():  # 整个comfyui的服务类
 
         self.user_manager = UserManager()  # 初始化用户管理模块
         self.supports = ["custom_nodes_from_web"]
-        self.prompt_queue = None
+        self.prompt_queue = None  # 存放具体任务的队列，由PromptQueue对象实例化时指定
         self.loop = loop
-        self.messages = asyncio.Queue()  # 异步队列
+        self.messages = asyncio.Queue()  # 异步队列，用于记录任务执行情况信息
         self.number = 0
 
         middlewares = [cache_control]
@@ -158,7 +158,7 @@ class PromptServer():  # 整个comfyui的服务类
 
             return type_dir, dir_type
 
-        def image_upload(post, image_save_function=None):
+        def image_upload(post, image_save_function=None):  # 图片上传函数，post是一个post请求对象
             image = post.get("image")
             overwrite = post.get("overwrite")
 
@@ -201,13 +201,13 @@ class PromptServer():  # 整个comfyui的服务类
             else:
                 return web.Response(status=400)
 
-        @routes.post("/upload/image")
+        @routes.post("/upload/image")  # 图片上传接口
         async def upload_image(request):
             post = await request.post()
             return image_upload(post)
 
 
-        @routes.post("/upload/mask")
+        @routes.post("/upload/mask")  # mask上传接口
         async def upload_mask(request):
             post = await request.post()
 
@@ -450,7 +450,7 @@ class PromptServer():  # 整个comfyui的服务类
             queue_info['queue_pending'] = current_queue[1]
             return web.json_response(queue_info)
 
-        @routes.post("/prompt")
+        @routes.post("/prompt")  # 生成任务接受接口
         async def post_prompt(request):
             logging.info("got prompt")
             resp_code = 200
@@ -470,7 +470,7 @@ class PromptServer():  # 整个comfyui的服务类
 
             if "prompt" in json_data:
                 prompt = json_data["prompt"]
-                valid = execution.validate_prompt(prompt)
+                valid = execution.validate_prompt(prompt)  # 校验请求参数
                 extra_data = {}
                 if "extra_data" in json_data:
                     extra_data = json_data["extra_data"]
@@ -480,8 +480,8 @@ class PromptServer():  # 整个comfyui的服务类
                 if valid[0]:
                     prompt_id = str(uuid.uuid4())
                     outputs_to_execute = valid[2]
-                    self.prompt_queue.put((number, prompt_id, prompt, extra_data, outputs_to_execute))
-                    response = {"prompt_id": prompt_id, "number": number, "node_errors": valid[3]}
+                    self.prompt_queue.put((number, prompt_id, prompt, extra_data, outputs_to_execute))  #  添加生成任务
+                    response = {"prompt_id": prompt_id, "number": number, "node_errors": valid[3]}  # 构建的返回信息
                     return web.json_response(response)
                 else:
                     logging.warning("invalid prompt: {}".format(valid[1]))
@@ -494,16 +494,16 @@ class PromptServer():  # 整个comfyui的服务类
             json_data =  await request.json()
             if "clear" in json_data:
                 if json_data["clear"]:
-                    self.prompt_queue.wipe_queue()
+                    self.prompt_queue.wipe_queue()  # 清空任务队列
             if "delete" in json_data:
                 to_delete = json_data['delete']
                 for id_to_delete in to_delete:
                     delete_func = lambda a: a[1] == id_to_delete
-                    self.prompt_queue.delete_queue_item(delete_func)
+                    self.prompt_queue.delete_queue_item(delete_func)  # 从队列中删除指定任务
 
             return web.Response(status=200)
 
-        @routes.post("/interrupt")
+        @routes.post("/interrupt")  # 中止生成接口
         async def post_interrupt(request):
             nodes.interrupt_processing()
             return web.Response(status=200)
@@ -560,16 +560,16 @@ class PromptServer():  # 整个comfyui的服务类
         else:
             await self.send_json(event, data, sid)
 
-    def encode_bytes(self, event, data):
+    def encode_bytes(self, event, data):  # 将事件类型和数据打包成字节消息
         if not isinstance(event, int):
             raise RuntimeError(f"Binary event types must be integers, got {event}")
 
-        packed = struct.pack(">I", event)
-        message = bytearray(packed)
-        message.extend(data)
+        packed = struct.pack(">I", event)  # 将事件类型编码为大端字节序的无符号整数，并将其放入 packed 变量中
+        message = bytearray(packed)  # 创建一个可变字节序列 message，并将编码后的事件类型添加到其中
+        message.extend(data)  # 将数据 data 添加到 message 中
         return message
 
-    async def send_image(self, image_data, sid=None):
+    async def send_image(self, image_data, sid=None):  # 发送图片
         image_type = image_data[0]
         image = image_data[1]
         max_size = image_data[2]
@@ -593,14 +593,14 @@ class PromptServer():  # 整个comfyui的服务类
         preview_bytes = bytesIO.getvalue()
         await self.send_bytes(BinaryEventTypes.PREVIEW_IMAGE, preview_bytes, sid=sid)
 
-    async def send_bytes(self, event, data, sid=None):
-        message = self.encode_bytes(event, data)
+    async def send_bytes(self, event, data, sid=None):  # 向 WebSocket 客户端发送字节消息
+        message = self.encode_bytes(event, data)  # 将事件类型和数据打包成字节消息
 
-        if sid is None:
+        if sid is None:  # 如果sid不存在，会将data广播给所有ws连接
             sockets = list(self.sockets.values())
             for ws in sockets:
                 await send_socket_catch_exception(ws.send_bytes, message)
-        elif sid in self.sockets:
+        elif sid in self.sockets:  # 如果sid存在，发送至对应的ws连接
             await send_socket_catch_exception(self.sockets[sid].send_bytes, message)
 
     async def send_json(self, event, data, sid=None):
@@ -614,22 +614,22 @@ class PromptServer():  # 整个comfyui的服务类
             await send_socket_catch_exception(self.sockets[sid].send_json, message)
 
     def send_sync(self, event, data, sid=None):
-        self.loop.call_soon_threadsafe(
-            self.messages.put_nowait, (event, data, sid))
+        self.loop.call_soon_threadsafe(  # 确保消息队列的线程安全性
+            self.messages.put_nowait, (event, data, sid))  # 将事件、数据和客户端会话 ID 放入消息队列
 
-    def queue_updated(self):
-        self.send_sync("status", { "status": self.get_queue_info() })
+    def queue_updated(self):  # 在队列更新时，调用 send_sync 方法发送队列状态信息
+        self.send_sync("status", { "status": self.get_queue_info() })  # 调用 send_sync 方法发送 "status" 事件和队列信息给客户端
 
-    async def publish_loop(self):
+    async def publish_loop(self):  # 持续地从messages队列中获取消息，并将消息发送给客户端
         while True:
-            msg = await self.messages.get()
+            msg = await self.messages.get()  #  await 关键字从消息队列中获取下一个消息，会阻塞当前协程直到有消息可用
             await self.send(*msg)
 
-    async def start(self, address, port, verbose=True, call_on_start=None):
-        runner = web.AppRunner(self.app, access_log=None)
-        await runner.setup()
-        site = web.TCPSite(runner, address, port)
-        await site.start()
+    async def start(self, address, port, verbose=True, call_on_start=None):  # 服务启动
+        runner = web.AppRunner(self.app, access_log=None)  # 创建一个 web.AppRunner 对象，用于运行服务器应用程序
+        await runner.setup()  #  setup() 方法进行一些准备工作
+        site = web.TCPSite(runner, address, port)  # 创建一个 web.TCPSite 对象，表示服务器将在指定的 address 和 port 上运行
+        await site.start()  #  start() 方法启动服务器
 
         if verbose:
             logging.info("Starting server\n")

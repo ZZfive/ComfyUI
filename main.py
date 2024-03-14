@@ -108,14 +108,14 @@ def prompt_worker(q, server):  # 复杂从队列中获取任务并执行
             prompt_id = item[1]
             server.last_prompt_id = prompt_id
 
-            e.execute(item[2], prompt_id, item[3], item[4])
+            e.execute(item[2], prompt_id, item[3], item[4])  # 开始执行任务
             need_gc = True
             q.task_done(item_id,
                         e.outputs_ui,
                         status=execution.PromptQueue.ExecutionStatus(
                             status_str='success' if e.success else 'error',
                             completed=e.success,
-                            messages=e.status_messages))
+                            messages=e.status_messages))  # 将处理完的任务存储，并通知服务器队列已更新
             if server.client_id is not None:
                 server.send_sync("executing", { "node": None, "prompt_id": prompt_id }, server.client_id)
 
@@ -214,7 +214,7 @@ if __name__ == "__main__":
         for config_path in itertools.chain(*args.extra_model_paths_config):
             load_extra_path_config(config_path)
 
-    init_custom_nodes()  # 加载自定义节点
+    init_custom_nodes()  # 加载Comfyui自带和自定义节点
 
     cuda_malloc_warning()          
 

@@ -1873,9 +1873,10 @@ EXTENSION_WEB_DIRS = {}
 def load_custom_node(module_path, ignore=set()):
     module_name = os.path.basename(module_path)
     if os.path.isfile(module_path):
-        sp = os.path.splitext(module_path)
+        sp = os.path.splitext(module_path)  # 返回一个包含文件名称和扩展名的元组
         module_name = sp[0]
     try:
+        # 动态加载模块
         if os.path.isfile(module_path):
             module_spec = importlib.util.spec_from_file_location(module_name, module_path)
             module_dir = os.path.split(module_path)[0]
@@ -1908,11 +1909,11 @@ def load_custom_node(module_path, ignore=set()):
         return False
 
 def load_custom_nodes():
-    base_node_names = set(NODE_CLASS_MAPPINGS.keys())
+    base_node_names = set(NODE_CLASS_MAPPINGS.keys())  # 已加载的节点，避免重复加载
     node_paths = folder_paths.get_folder_paths("custom_nodes")
-    node_import_times = []
+    node_import_times = []  # 记录节点加载时间和是否成功
     for custom_node_path in node_paths:
-        possible_modules = os.listdir(os.path.realpath(custom_node_path))
+        possible_modules = os.listdir(os.path.realpath(custom_node_path))  # 获取路径下的所有文件和文件夹
         if "__pycache__" in possible_modules:
             possible_modules.remove("__pycache__")
 
@@ -1921,7 +1922,7 @@ def load_custom_nodes():
             if os.path.isfile(module_path) and os.path.splitext(module_path)[1] != ".py": continue
             if module_path.endswith(".disabled"): continue
             time_before = time.perf_counter()
-            success = load_custom_node(module_path, base_node_names)
+            success = load_custom_node(module_path, base_node_names)  # 加载自定义节点
             node_import_times.append((time.perf_counter() - time_before, module_path, success))
 
     if len(node_import_times) > 0:
@@ -1971,7 +1972,7 @@ def init_custom_nodes():
         if not load_custom_node(os.path.join(extras_dir, node_file)):
             import_failed.append(node_file)
 
-    load_custom_nodes()
+    load_custom_nodes()  # 加载自定义节点
 
     if len(import_failed) > 0:
         logging.warning("WARNING: some comfy_extras/ nodes did not import correctly. This may be because they are missing some dependencies.\n")

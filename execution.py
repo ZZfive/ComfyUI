@@ -268,6 +268,7 @@ def recursive_output_delete_if_changed(prompt, old_prompt, outputs, current_item
         del d
     return to_delete
 
+
 class PromptExecutor:
     def __init__(self, server):
         self.server = server
@@ -710,35 +711,36 @@ def validate_prompt(prompt):
 
 MAXIMUM_HISTORY_SIZE = 10000
 
+
 class PromptQueue:
     def __init__(self, server):
-        self.server = server
-        self.mutex = threading.RLock()
-        self.not_empty = threading.Condition(self.mutex)
+        self.server = server  # 服务实例对象，初始时其内部的任务队列prompt_queue为None
+        self.mutex = threading.RLock()  # 创建一个可重入锁（RLock），可用于实现线程间的互斥访问；可重入锁允许同一线程多次获取锁，而不会造成死锁
+        self.not_empty = threading.Condition(self.mutex)  # 创建了一个条件变量，条件变量通常用于线程间的通信和同步，它可以让一个线程等待某个条件的发生，另一个线程在满足条件时通知等待的线程
         self.task_counter = 0
-        self.queue = []
+        self.queue = []  # 实际存放任务的队列
         self.currently_running = {}
         self.history = {}
         self.flags = {}
-        server.prompt_queue = self
+        server.prompt_queue = self  # 将server的prompt_queue属性指向当前实例对象
 
     def put(self, item):
         with self.mutex:
-            heapq.heappush(self.queue, item)
-            self.server.queue_updated()
-            self.not_empty.notify()
+            heapq.heappush(self.queue, item)  # 将任务按照堆的顺序插入队列
+            self.server.queue_updated()  # 通知服务器队列已更新
+            self.not_empty.notify()  # 调用条件变量 self.not_empty 的 notify 方法，通知等待在该条件上的线程有元素可取。这样，如果有线程因为队列为空而在条件变量上等待，那么它会被唤醒
 
-    def get(self, timeout=None):
+    def get(self, timeout=None):  # 用于从队列中获取元素。在获取元素时，它同样使用了条件变量 self.not_empty，确保在队列为空时线程能够等待并在队列不为空时被正确唤醒
         with self.not_empty:
-            while len(self.queue) == 0:
-                self.not_empty.wait(timeout=timeout)
-                if timeout is not None and len(self.queue) == 0:
+            while len(self.queue) == 0:  # 任务队列为空时等待
+                self.not_empty.wait(timeout=timeout)  # 调用条件变量 self.not_empty 的 wait 方法，使当前线程在条件变量上等待。如果在指定的 timeout 时间内没有收到通知（队列非空），则会自动唤醒
+                if timeout is not None and len(self.queue) == 0:  # 果设置了超时时间，并且队列仍然为空，则返回 None，表示获取失败
                     return None
-            item = heapq.heappop(self.queue)
+            item = heapq.heappop(self.queue)  # 从队列中取出最小元素。这里使用了 heapq 模块的 heappop 函数，取出堆顶元素，保持队列的堆特性
             i = self.task_counter
             self.currently_running[i] = copy.deepcopy(item)
             self.task_counter += 1
-            self.server.queue_updated()
+            self.server.queue_updated()  # 调用服务器对象的 queue_updated 方法，通知服务器队列已更新
             return (item, i)
 
     class ExecutionStatus(NamedTuple):
@@ -747,10 +749,10 @@ class PromptQueue:
         messages: List[str]
 
     def task_done(self, item_id, outputs,
-                  status: Optional['PromptQueue.ExecutionStatus']):
+                  status: Optional['PromptQueue.ExecutionStatus']):  # 用于标记任务的完成状态，并更新相关信息
         with self.mutex:
             prompt = self.currently_running.pop(item_id)
-            if len(self.history) > MAXIMUM_HISTORY_SIZE:
+            if len(self.history) > MAXIMUM_HISTORY_SIZE:  # 如果历史记录超过了最大记录数，就从历史记录中移除最旧的一项
                 self.history.pop(next(iter(self.history)))
 
             status_dict: Optional[dict] = None
@@ -761,26 +763,26 @@ class PromptQueue:
                 "prompt": prompt,
                 "outputs": copy.deepcopy(outputs),
                 'status': status_dict,
-            }
-            self.server.queue_updated()
+            }  # 将任务的相关信息存储到历史记录中
+            self.server.queue_updated()  # 调用服务器对象的 queue_updated 方法，通知服务器队列已更新
 
-    def get_current_queue(self):
+    def get_current_queue(self):  # 获取当前任务队列信息
         with self.mutex:
             out = []
             for x in self.currently_running.values():
                 out += [x]
             return (out, copy.deepcopy(self.queue))
 
-    def get_tasks_remaining(self):
+    def get_tasks_remaining(self):  # 获取当前任务队列剩余任务数量
         with self.mutex:
             return len(self.queue) + len(self.currently_running)
 
-    def wipe_queue(self):
+    def wipe_queue(self):  # 清空任务队列
         with self.mutex:
             self.queue = []
             self.server.queue_updated()
 
-    def delete_queue_item(self, function):
+    def delete_queue_item(self, function):  # 删除任务队列中符合条件的任务
         with self.mutex:
             for x in range(len(self.queue)):
                 if function(self.queue[x]):
@@ -793,7 +795,7 @@ class PromptQueue:
                     return True
         return False
 
-    def get_history(self, prompt_id=None, max_items=None, offset=-1):
+    def get_history(self, prompt_id=None, max_items=None, offset=-1):  # 获取历史任务信息
         with self.mutex:
             if prompt_id is None:
                 out = {}
@@ -812,11 +814,11 @@ class PromptQueue:
             else:
                 return {}
 
-    def wipe_history(self):
+    def wipe_history(self):  # 清空任务历史
         with self.mutex:
             self.history = {}
 
-    def delete_history_item(self, id_to_delete):
+    def delete_history_item(self, id_to_delete):  # 删除任务历史中符合条件的任务
         with self.mutex:
             self.history.pop(id_to_delete, None)
 

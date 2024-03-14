@@ -85,7 +85,7 @@ class UserManager():
         return user_id
 
     def add_routes(self, routes):
-        self.settings.add_routes(routes)
+        self.settings.add_routes(routes)  # 添加用户设置路由
 
         @routes.get("/users")  # 获取用户信息
         async def get_users(request):
