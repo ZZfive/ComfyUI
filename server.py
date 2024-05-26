@@ -11,6 +11,7 @@ import urllib
 import json
 import glob
 import struct
+import ssl
 from PIL import Image, ImageOps
 from PIL.PngImagePlugin import PngInfo
 from io import BytesIO
@@ -625,17 +626,25 @@ class PromptServer():  # 整个comfyui的服务类
             msg = await self.messages.get()  #  await 关键字从消息队列中获取下一个消息，会阻塞当前协程直到有消息可用
             await self.send(*msg)
 
-    async def start(self, address, port, verbose=True, call_on_start=None):  # 服务启动
-        runner = web.AppRunner(self.app, access_log=None)  # 创建一个 web.AppRunner 对象，用于运行服务器应用程序
-        await runner.setup()  #  setup() 方法进行一些准备工作
-        site = web.TCPSite(runner, address, port)  # 创建一个 web.TCPSite 对象，表示服务器将在指定的 address 和 port 上运行
-        await site.start()  #  start() 方法启动服务器
+    async def start(self, address, port, verbose=True, call_on_start=None):
+        runner = web.AppRunner(self.app, access_log=None)
+        await runner.setup()
+        ssl_ctx = None
+        scheme = "http"
+        if args.tls_keyfile and args.tls_certfile:
+                ssl_ctx = ssl.SSLContext(protocol=ssl.PROTOCOL_TLS_SERVER, verify_mode=ssl.CERT_NONE)
+                ssl_ctx.load_cert_chain(certfile=args.tls_certfile,
+                                keyfile=args.tls_keyfile)
+                scheme = "https"
+
+        site = web.TCPSite(runner, address, port, ssl_context=ssl_ctx)
+        await site.start()
 
         if verbose:
             logging.info("Starting server\n")
-            logging.info("To see the GUI go to: http://{}:{}".format(address, port))
+            logging.info("To see the GUI go to: {}://{}:{}".format(scheme, address, port))
         if call_on_start is not None:
-            call_on_start(address, port)
+            call_on_start(scheme, address, port)
 
     def add_on_prompt_handler(self, handler):
         self.on_prompt_handlers.append(handler)

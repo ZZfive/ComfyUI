@@ -138,7 +138,8 @@ def prompt_worker(q, server):  # 复杂从队列中获取任务并执行
 
         if need_gc:
             current_time = time.perf_counter()
-            if (current_time - last_gc_collect) > gc_collect_interval:  # 定期执行垃圾回收，间隔时间为 gc_collect_interval
+            if (current_time - last_gc_collect) > gc_collect_interval:
+                comfy.model_management.cleanup_models()
                 gc.collect()
                 comfy.model_management.soft_empty_cache()
                 last_gc_collect = current_time
@@ -242,12 +243,12 @@ if __name__ == "__main__":
         exit(0)
 
     call_on_start = None
-    if args.auto_launch:  # 自动启动ui界面
-        def startup_server(address, port):
+    if args.auto_launch:
+        def startup_server(scheme, address, port):
             import webbrowser
             if os.name == 'nt' and address == '0.0.0.0':
                 address = '127.0.0.1'
-            webbrowser.open(f"http://{address}:{port}")
+            webbrowser.open(f"{scheme}://{address}:{port}")
         call_on_start = startup_server
 
     try:
