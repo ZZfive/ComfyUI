@@ -77,7 +77,7 @@ class PromptServer():  # 整个comfyui的服务类
         self.prompt_queue = None  # 存放具体任务的队列，由PromptQueue对象实例化时指定
         self.loop = loop
         self.messages = asyncio.Queue()  # 异步队列，用于记录任务执行情况信息
-        self.number = 0
+        self.number = 0  # 服务本次启动执行生成任务的次数
 
         middlewares = [cache_control]
         if args.enable_cors_header:
@@ -478,7 +478,7 @@ class PromptServer():  # 整个comfyui的服务类
                 if "client_id" in json_data:
                     extra_data["client_id"] = json_data["client_id"]
                 if valid[0]:
-                    prompt_id = str(uuid.uuid4())
+                    prompt_id = str(uuid.uuid4()) # 为当前任务创建一个id
                     outputs_to_execute = valid[2]
                     self.prompt_queue.put((number, prompt_id, prompt, extra_data, outputs_to_execute))  #  添加生成任务
                     response = {"prompt_id": prompt_id, "number": number, "node_errors": valid[3]}  # 构建的返回信息

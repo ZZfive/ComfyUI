@@ -621,7 +621,7 @@ def full_type_name(klass):
     return module + '.' + klass.__qualname__
 
 def validate_prompt(prompt):
-    outputs = set()
+    outputs = set()  # 查找所有输出类型节点并记录
     for x in prompt:
         class_ = nodes.NODE_CLASS_MAPPINGS[prompt[x]['class_type']]
         if hasattr(class_, 'OUTPUT_NODE') and class_.OUTPUT_NODE == True:
@@ -644,7 +644,7 @@ def validate_prompt(prompt):
         valid = False
         reasons = []
         try:
-            m = validate_inputs(prompt, o, validated)
+            m = validate_inputs(prompt, o, validated)  # 从保存类节点向前递归验证节点有效性
             valid = m[0]
             reasons = m[1]
         except Exception as ex:
