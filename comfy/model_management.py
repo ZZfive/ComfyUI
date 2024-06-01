@@ -2,7 +2,6 @@ import psutil
 import logging
 from enum import Enum
 from comfy.cli_args import args
-import comfy.utils
 import torch
 import sys
 import platform
@@ -630,6 +629,10 @@ def supports_dtype(device, dtype): #TODO
 def device_supports_non_blocking(device):
     if is_device_mps(device):
         return False #pytorch bug? mps doesn't support non blocking
+    if args.deterministic: #TODO: figure out why deterministic breaks non blocking from gpu to cpu (previews)
+        return False
+    if directml_enabled:
+        return False
     return True
 
 def device_should_use_non_blocking(device):
