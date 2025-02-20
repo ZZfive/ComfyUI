@@ -1,5 +1,5 @@
 import comfy.options
-comfy.options.enable_args_parsing()
+comfy.options.enable_args_parsing()  # 将comfy.options.args_parsing设置为True
 
 import os
 import importlib.util
@@ -23,17 +23,17 @@ def apply_custom_paths():
     # extra model paths
     extra_model_paths_config_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "extra_model_paths.yaml")
     if os.path.isfile(extra_model_paths_config_path):
-        utils.extra_config.load_extra_path_config(extra_model_paths_config_path)
+        utils.extra_config.load_extra_path_config(extra_model_paths_config_path)  # 加载extra_model_paths.yaml文件中的配置
 
     if args.extra_model_paths_config:
-        for config_path in itertools.chain(*args.extra_model_paths_config):
+        for config_path in itertools.chain(*args.extra_model_paths_config):  # extra_model_paths_config中可能包含多个路径，所以需要遍历
             utils.extra_config.load_extra_path_config(config_path)
 
     # --output-directory, --input-directory, --user-directory
     if args.output_directory:
         output_dir = os.path.abspath(args.output_directory)
         logging.info(f"Setting output directory to: {output_dir}")
-        folder_paths.set_output_directory(output_dir)
+        folder_paths.set_output_directory(output_dir)  # 设置输出目录
 
     # These are the default folders that checkpoints, clip and vae models will be saved to when using CheckpointSave, etc.. nodes
     folder_paths.add_model_folder_path("checkpoints", os.path.join(folder_paths.get_output_directory(), "checkpoints"))
@@ -60,24 +60,24 @@ def execute_prestartup_script():
         try:
             spec = importlib.util.spec_from_file_location(module_name, script_path)
             module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
+            spec.loader.exec_module(module)  # 动态加载并执行script_path对应的脚本
             return True
         except Exception as e:
             logging.error(f"Failed to execute startup-script: {script_path} / {e}")
         return False
 
-    if args.disable_all_custom_nodes:
+    if args.disable_all_custom_nodes:  # 如果禁用了所有自定义节点，则直接返回
         return
 
-    node_paths = folder_paths.get_folder_paths("custom_nodes")
+    node_paths = folder_paths.get_folder_paths("custom_nodes")  # 获取自定义节点的路径
     for custom_node_path in node_paths:
-        possible_modules = os.listdir(custom_node_path)
-        node_prestartup_times = []
+        possible_modules = os.listdir(custom_node_path)  # 获取自定义节点路径下的所有文件和文件夹
+        node_prestartup_times = []  # 用于记录自定义节点预启动时间
 
         for possible_module in possible_modules:
             module_path = os.path.join(custom_node_path, possible_module)
             if os.path.isfile(module_path) or module_path.endswith(".disabled") or module_path == "__pycache__":
-                continue
+                continue  # 如果module_path是文件或文件名以.disabled结尾或是__pycache__，则跳过
 
             script_path = os.path.join(module_path, "prestartup_script.py")
             if os.path.exists(script_path):
@@ -215,22 +215,22 @@ async def run(server_instance, address='', port=8188, verbose=True, call_on_star
         addresses.append((addr, port))
     await asyncio.gather(
         server_instance.start_multi_address(addresses, call_on_start, verbose), server_instance.publish_loop()
-    )
+    )  # 异步同时运行server.start_multi_address和server.publish_loop两个函数
 
 
 def hijack_progress(server_instance):
     def hook(value, total, preview_image):
-        comfy.model_management.throw_exception_if_processing_interrupted()
-        progress = {"value": value, "max": total, "prompt_id": server_instance.last_prompt_id, "node": server_instance.last_node_id}
+        comfy.model_management.throw_exception_if_processing_interrupted()  # 采样过程若中断会排除异常
+        progress = {"value": value, "max": total, "prompt_id": server_instance.last_prompt_id, "node": server_instance.last_node_id}  
 
-        server_instance.send_sync("progress", progress, server_instance.client_id)
+        server_instance.send_sync("progress", progress, server_instance.client_id)  # 将信息信息发送给客户端，其可以更新进度
         if preview_image is not None:
-            server_instance.send_sync(BinaryEventTypes.UNENCODED_PREVIEW_IMAGE, preview_image, server_instance.client_id)
+            server_instance.send_sync(BinaryEventTypes.UNENCODED_PREVIEW_IMAGE, preview_image, server_instance.client_id)  # 如果有预览图像可用，通过服务器的 send_sync 方法将其发送给客户端
 
-    comfy.utils.set_progress_bar_global_hook(hook)
+    comfy.utils.set_progress_bar_global_hook(hook)  # 设置全局进度条钩子，将其设置为内部定义的 hook 函数。这意味着每当进度更新时，都会调用 hook 函数来处理更新事件
 
 
-def cleanup_temp():
+def cleanup_temp():  # 清理临时文件夹
     temp_dir = folder_paths.get_temp_directory()
     if os.path.exists(temp_dir):
         shutil.rmtree(temp_dir, ignore_errors=True)
@@ -255,19 +255,19 @@ def start_comfyui(asyncio_loop=None):
             pass
 
     if not asyncio_loop:
-        asyncio_loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(asyncio_loop)
-    prompt_server = server.PromptServer(asyncio_loop)
-    q = execution.PromptQueue(prompt_server)
+        asyncio_loop = asyncio.new_event_loop()  # 创建一个新的事件循环
+        asyncio.set_event_loop(asyncio_loop)  # 设置事件循环
+    prompt_server = server.PromptServer(asyncio_loop)  # 创建PromptServer实例，处理HTTP请求的服务器
+    q = execution.PromptQueue(prompt_server)  # 创建PromptQueue实例，任务队列管理器
 
-    nodes.init_extra_nodes(init_custom_nodes=not args.disable_all_custom_nodes)
+    nodes.init_extra_nodes(init_custom_nodes=not args.disable_all_custom_nodes)  # 动态加载自定义节点
 
     cuda_malloc_warning()
 
-    prompt_server.add_routes()
-    hijack_progress(prompt_server)
+    prompt_server.add_routes()  # prompt_server对象添加hTTP路由
+    hijack_progress(prompt_server)  # 设置进度条钩子
 
-    threading.Thread(target=prompt_worker, daemon=True, args=(q, prompt_server,)).start()
+    threading.Thread(target=prompt_worker, daemon=True, args=(q, prompt_server,)).start()  # 以守护子线程的方式启动任务处理函数prompt_worker，其中有while True，此子线程会一直存在，只有当主线程结束时才会终止
 
     if args.quick_test_for_ci:
         exit(0)
@@ -284,7 +284,7 @@ def start_comfyui(asyncio_loop=None):
             webbrowser.open(f"{scheme}://{address}:{port}")
         call_on_start = startup_server
 
-    async def start_all():
+    async def start_all():  # 异步起动函数
         await prompt_server.setup()
         await run(prompt_server, address=args.listen, port=args.port, verbose=not args.dont_print_server, call_on_start=call_on_start)
 
@@ -297,7 +297,7 @@ if __name__ == "__main__":
     logging.info("ComfyUI version: {}".format(comfyui_version.__version__))
     event_loop, _, start_all_func = start_comfyui()
     try:
-        event_loop.run_until_complete(start_all_func())
+        event_loop.run_until_complete(start_all_func())  # 运行事件循环，直到所有任务完成
     except KeyboardInterrupt:
         logging.info("\nStopped server")
 

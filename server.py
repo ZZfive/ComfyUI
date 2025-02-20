@@ -147,7 +147,7 @@ def create_origin_only_middleware():
 
 class PromptServer():
     def __init__(self, loop):
-        PromptServer.instance = self
+        PromptServer.instance = self  # 将自身赋值给PromptServer.instance，不严格的单例模式，可以创建多个实例，只是后续的实例会覆盖instance
 
         mimetypes.init()
         mimetypes.add_type('application/javascript; charset=utf-8', '.js')
@@ -704,7 +704,7 @@ class PromptServer():
 
     async def setup(self):
         timeout = aiohttp.ClientTimeout(total=None) # no timeout
-        self.client_session = aiohttp.ClientSession(timeout=timeout)
+        self.client_session = aiohttp.ClientSession(timeout=timeout)  # 创建HTTP客户端
 
     def add_routes(self):
         self.user_manager.add_routes(self.routes)
@@ -780,7 +780,7 @@ class PromptServer():
         bytesIO.write(header)
         image.save(bytesIO, format=image_type, quality=95, compress_level=1)
         preview_bytes = bytesIO.getvalue()
-        await self.send_bytes(BinaryEventTypes.PREVIEW_IMAGE, preview_bytes, sid=sid)
+        await self.send_bytes(BinaryEventTypes.PREVIEW_IMAGE, preview_bytes, sid=sid)  # 将预览图像发送给客户端
 
     async def send_bytes(self, event, data, sid=None):
         message = self.encode_bytes(event, data)
@@ -788,9 +788,9 @@ class PromptServer():
         if sid is None:
             sockets = list(self.sockets.values())
             for ws in sockets:
-                await send_socket_catch_exception(ws.send_bytes, message)
+                await send_socket_catch_exception(ws.send_bytes, message)  # 将消息发送给客户端
         elif sid in self.sockets:
-            await send_socket_catch_exception(self.sockets[sid].send_bytes, message)
+            await send_socket_catch_exception(self.sockets[sid].send_bytes, message)  # 将消息发送给客户端
 
     async def send_json(self, event, data, sid=None):
         message = {"type": event, "data": data}
@@ -798,48 +798,48 @@ class PromptServer():
         if sid is None:
             sockets = list(self.sockets.values())
             for ws in sockets:
-                await send_socket_catch_exception(ws.send_json, message)
+                await send_socket_catch_exception(ws.send_json, message)  # 将消息发送给客户端
         elif sid in self.sockets:
-            await send_socket_catch_exception(self.sockets[sid].send_json, message)
+            await send_socket_catch_exception(self.sockets[sid].send_json, message)  # 将消息发送给客户端
 
     def send_sync(self, event, data, sid=None):
         self.loop.call_soon_threadsafe(
-            self.messages.put_nowait, (event, data, sid))
+            self.messages.put_nowait, (event, data, sid))  # 将消息添加到消息队列中
 
     def queue_updated(self):
-        self.send_sync("status", { "status": self.get_queue_info() })
+        self.send_sync("status", { "status": self.get_queue_info() })  # 将队列状态发送给客户端
 
     async def publish_loop(self):
         while True:
-            msg = await self.messages.get()
-            await self.send(*msg)
+            msg = await self.messages.get()  # 从消息队列中获取消息
+            await self.send(*msg)  # 将消息发送给客户端
 
     async def start(self, address, port, verbose=True, call_on_start=None):
         await self.start_multi_address([(address, port)], call_on_start=call_on_start)
 
     async def start_multi_address(self, addresses, call_on_start=None, verbose=True):
-        runner = web.AppRunner(self.app, access_log=None)
-        await runner.setup()
+        runner = web.AppRunner(self.app, access_log=None)  # 创建aiohttp.web.AppRunner实例来管理web应用
+        await runner.setup()  # 初始化AppRunner
         ssl_ctx = None
         scheme = "http"
-        if args.tls_keyfile and args.tls_certfile:
+        if args.tls_keyfile and args.tls_certfile:  # 如果设置了TLS密钥和证书文件
                 ssl_ctx = ssl.SSLContext(protocol=ssl.PROTOCOL_TLS_SERVER, verify_mode=ssl.CERT_NONE)
                 ssl_ctx.load_cert_chain(certfile=args.tls_certfile,
-                                keyfile=args.tls_keyfile)
-                scheme = "https"
+                                keyfile=args.tls_keyfile)  # 加载TLS证书和密钥
+                scheme = "https"  # 设置scheme为https
 
         if verbose:
             logging.info("Starting server\n")
-        for addr in addresses:
+        for addr in addresses:  # 遍历地址列表，多地址监听
             address = addr[0]
             port = addr[1]
-            site = web.TCPSite(runner, address, port, ssl_context=ssl_ctx)
-            await site.start()
+            site = web.TCPSite(runner, address, port, ssl_context=ssl_ctx)  # 创建一个TCPSite对象，用于管理TCP连接
+            await site.start()  # 启动TCPSite，开始监听TCP连接
 
-            if not hasattr(self, 'address'):
+            if not hasattr(self, 'address'):  # 保存第一个地址作为默认地址
                 self.address = address #TODO: remove this
                 self.port = port
-
+            # 格式化地址显示
             if ':' in address:
                 address_print = "[{}]".format(address)
             else:

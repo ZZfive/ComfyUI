@@ -878,6 +878,8 @@ class PromptQueue:
         self.currently_running = {}
         self.history = {}
         self.flags = {}
+        # 将自身又赋值给了传入server对象的prompt_queue属性，属于双向引用设计模式，适合需要双向通信但又要保持模块独立的场景
+        # 即此处的server在接收外部请求后会经任务添加到self.queue中，而在队列内部又可通过调用self.server.queue_updated()向调用方发送消息
         server.prompt_queue = self
 
     def put(self, item):

@@ -5,13 +5,13 @@ from typing import Optional
 import comfy.options
 
 
-class EnumAction(argparse.Action):
+class EnumAction(argparse.Action):  # 用于处理枚举类型的自定义类，作用是让argparse能够正确处理Enum类型的命令行参数
     """
     Argparse action for handling Enums
     """
     def __init__(self, **kwargs):
         # Pop off the type value
-        enum_type = kwargs.pop("type", None)
+        enum_type = kwargs.pop("type", None)  # 从kwargs中移除type参数，并赋值给enum_type，就是在add_argument中传给type的参数类型
 
         # Ensure an Enum subclass is provided
         if enum_type is None:
@@ -51,7 +51,7 @@ parser.add_argument("--input-directory", type=str, default=None, help="Set the C
 parser.add_argument("--auto-launch", action="store_true", help="Automatically launch ComfyUI in the default browser.")
 parser.add_argument("--disable-auto-launch", action="store_true", help="Disable auto launching the browser.")
 parser.add_argument("--cuda-device", type=int, default=None, metavar="DEVICE_ID", help="Set the id of the cuda device this instance will use.")
-cm_group = parser.add_mutually_exclusive_group()
+cm_group = parser.add_mutually_exclusive_group()  # 创建一个互斥组，组中的参数相互排斥，只能设置其中一个
 cm_group.add_argument("--cuda-malloc", action="store_true", help="Enable cudaMallocAsync (enabled by default for torch 2.0 and up).")
 cm_group.add_argument("--disable-cuda-malloc", action="store_true", help="Disable cudaMallocAsync.")
 
@@ -93,7 +93,7 @@ class LatentPreviewMethod(enum.Enum):
     Auto = "auto"
     Latent2RGB = "latent2rgb"
     TAESD = "taesd"
-
+# 设置采样节点的预览方式，默认为不预览
 parser.add_argument("--preview-method", type=LatentPreviewMethod, default=LatentPreviewMethod.NoPreviews, help="Default preview method for sampler nodes.", action=EnumAction)
 
 parser.add_argument("--preview-size", type=int, default=512, help="Sets the maximum preview size for sampler nodes.")

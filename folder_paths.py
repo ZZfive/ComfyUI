@@ -11,7 +11,7 @@ from comfy.cli_args import args
 
 supported_pt_extensions: set[str] = {'.ckpt', '.pt', '.pt2', '.bin', '.pth', '.safetensors', '.pkl', '.sft'}
 
-folder_names_and_paths: dict[str, tuple[list[str], set[str]]] = {}
+folder_names_and_paths: dict[str, tuple[list[str], set[str]]] = {}  # value是一个元素，第一个元素是存放对应模型或配置的列表，即表明相同的模型或配置可以存储在多个路径下，第二个元素也是一个列表，存放对应文件的扩展名
 
 # --base-directory - Resets all default paths configured in folder_paths with a new base path
 if args.base_directory:
@@ -62,16 +62,16 @@ class CacheHelper:
         self.active = False
 
     def get(self, key: str, default=None) -> tuple[list[str], dict[str, float], float]:
-        if not self.active:
+        if not self.active:  # 如果缓存未激活，则返回默认值
             return default
         return self.cache.get(key, default)
 
     def set(self, key: str, value: tuple[list[str], dict[str, float], float]) -> None:
-        if self.active:
+        if self.active:  # 如果缓存激活，则将value设置为key对应的值
             self.cache[key] = value
 
     def clear(self):
-        self.cache.clear()
+        self.cache.clear()  # 清空缓存
 
     def __enter__(self):
         self.active = True
@@ -151,17 +151,17 @@ def filter_files_content_types(files: list[str], content_types: Literal["image",
     for file in files:
         extension = file.split('.')[-1]
         if extension not in extension_mimetypes_cache:
-            mime_type, _ = mimetypes.guess_type(file, strict=False)
+            mime_type, _ = mimetypes.guess_type(file, strict=False)  # 猜测文件的MIME类型
             if not mime_type:
                 continue
             content_type = mime_type.split('/')[0]
-            extension_mimetypes_cache[extension] = content_type
+            extension_mimetypes_cache[extension] = content_type  # key是文件后缀，value是文件的MIME类型“/”前面的部分
         else:
             content_type = extension_mimetypes_cache[extension]
 
         if content_type in content_types:
             result.append(file)
-    return result
+    return result  # 返回符合条件的文件列表
 
 # determine base_dir rely on annotation if name is 'filename.ext [annotation]' format
 # otherwise use default_path as base_dir

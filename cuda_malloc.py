@@ -4,7 +4,7 @@ from comfy.cli_args import args
 import subprocess
 
 #Can't use pytorch to get the GPU names because the cuda malloc has to be set before the first import.
-def get_gpu_names():
+def get_gpu_names():  # 获取GPU名称
     if os.name == 'nt':
         import ctypes
 
@@ -48,9 +48,9 @@ blacklist = {"GeForce GTX TITAN X", "GeForce GTX 980", "GeForce GTX 970", "GeFor
                 "Quadro M1200", "Quadro M2000", "Quadro M2200", "Quadro M3000", "Quadro M4000", "Quadro M5000", "Quadro M5500", "Quadro M6000",
                 "GeForce MX110", "GeForce MX130", "GeForce 830M", "GeForce 840M", "GeForce GTX 850M", "GeForce GTX 860M",
                 "GeForce GTX 1650", "GeForce GTX 1630", "Tesla M4", "Tesla M6", "Tesla M10", "Tesla M40", "Tesla M60"
-                }
+                }  # 黑名单，包含不支持cudaMallocAsync的GPU名称
 
-def cuda_malloc_supported():
+def cuda_malloc_supported():  # 检查当前GPU是否支持cudaMallocAsync
     try:
         names = get_gpu_names()
     except:
@@ -75,11 +75,11 @@ if not args.cuda_malloc:
                 spec.loader.exec_module(module)
                 version = module.__version__
         if int(version[0]) >= 2: #enable by default for torch version 2.0 and up
-            args.cuda_malloc = cuda_malloc_supported()
+            args.cuda_malloc = cuda_malloc_supported()  # 对PyTorch 2.0及以上版本启用cudaMallocAsync
     except:
         pass
 
-
+# 在导入torch之前，设置cuda内存分配方式
 if args.cuda_malloc and not args.disable_cuda_malloc:
     env_var = os.environ.get('PYTORCH_CUDA_ALLOC_CONF', None)
     if env_var is None:

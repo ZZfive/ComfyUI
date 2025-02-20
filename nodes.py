@@ -2142,7 +2142,7 @@ def load_custom_node(module_path: str, ignore=set(), module_parent="custom_nodes
 
         module = importlib.util.module_from_spec(module_spec)
         sys.modules[module_name] = module
-        module_spec.loader.exec_module(module)
+        module_spec.loader.exec_module(module)  # 动态加载并执行module
 
         LOADED_MODULE_DIRS[module_name] = os.path.abspath(module_dir)
 
@@ -2278,10 +2278,10 @@ def init_builtin_extra_nodes():
 
 
 def init_extra_nodes(init_custom_nodes=True):
-    import_failed = init_builtin_extra_nodes()
+    import_failed = init_builtin_extra_nodes()  # 动态加载内置的extra节点，返回加载失败的节点
 
     if init_custom_nodes:
-        init_external_custom_nodes()
+        init_external_custom_nodes()  # 动态加载外部自定义节点
     else:
         logging.info("Skipping loading of custom nodes")
 
