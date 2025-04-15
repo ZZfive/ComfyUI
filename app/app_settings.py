@@ -8,7 +8,7 @@ class AppSettings():
     def __init__(self, user_manager):
         self.user_manager = user_manager
 
-    def get_settings(self, request):
+    def get_settings(self, request):  # 获取用户设置
         file = self.user_manager.get_request_user_filepath(
             request, "comfy.settings.json")
         if os.path.isfile(file):
@@ -21,13 +21,13 @@ class AppSettings():
         else:
             return {}
 
-    def save_settings(self, request, settings):
+    def save_settings(self, request, settings):  # 保存用户设置
         file = self.user_manager.get_request_user_filepath(
             request, "comfy.settings.json")
         with open(file, "w") as f:
             f.write(json.dumps(settings, indent=4))
 
-    def add_routes(self, routes):
+    def add_routes(self, routes):  # 添加与设置相关的路由
         @routes.get("/settings")
         async def get_settings(request):
             return web.json_response(self.get_settings(request))

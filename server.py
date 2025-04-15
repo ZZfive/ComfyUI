@@ -48,25 +48,24 @@ async def send_socket_catch_exception(function, message):
 @web.middleware
 async def cache_control(request: web.Request, handler):
     response: web.Response = await handler(request)
-    if request.path.endswith('.js') or request.path.endswith('.css'):
-        response.headers.setdefault('Cache-Control', 'no-cache')
+    if request.path.endswith('.js') or request.path.endswith('.css'):  # 如果请求路径以js或css结尾
+        response.headers.setdefault('Cache-Control', 'no-cache')  # 禁用缓存
     return response
-
 
 @web.middleware
-async def compress_body(request: web.Request, handler):
-    accept_encoding = request.headers.get("Accept-Encoding", "")
+async def compress_body(request: web.Request, handler):  # 压缩HTTP响应体的中间件
+    accept_encoding = request.headers.get("Accept-Encoding", "")  # 获取客户端支持的压缩方式
     response: web.Response = await handler(request)
-    if not isinstance(response, web.Response):
+    if not isinstance(response, web.Response):  # 如果响应不是web.Response，直接返回
         return response
-    if response.content_type not in ["application/json", "text/plain"]:
+    if response.content_type not in ["application/json", "text/plain"]:  # 只压缩JSON和纯文本
         return response
     if response.body and "gzip" in accept_encoding:
-        response.enable_compression()
+        response.enable_compression()  # 启动压缩
     return response
 
 
-def create_cors_middleware(allowed_origin: str):
+def create_cors_middleware(allowed_origin: str):  # 返回一个跨资源共享中间件
     @web.middleware
     async def cors_middleware(request: web.Request, handler):
         if request.method == "OPTIONS":
@@ -75,10 +74,10 @@ def create_cors_middleware(allowed_origin: str):
         else:
             response = await handler(request)
 
-        response.headers['Access-Control-Allow-Origin'] = allowed_origin
-        response.headers['Access-Control-Allow-Methods'] = 'POST, GET, DELETE, PUT, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Allow-Origin'] = allowed_origin  # 允许的源
+        response.headers['Access-Control-Allow-Methods'] = 'POST, GET, DELETE, PUT, OPTIONS'  # 允许的HTTP方法
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'  # 允许的请求头
+        response.headers['Access-Control-Allow-Credentials'] = 'true'  # 允许携带凭证
         return response
 
     return cors_middleware
@@ -124,7 +123,7 @@ def create_origin_only_middleware():
             host_domain_parsed = urllib.parse.urlsplit('//' + host_domain)
 
             #limit the check to when the host domain is localhost, this makes it slightly less safe but should still prevent the exploit
-            loopback = is_loopback(host_domain_parsed.hostname)
+            loopback = is_loopback(host_domain_parsed.hostname)  # 检查主机域名是否为本地回环地址
 
             if parsed.port is None: #if origin doesn't have a port strip it from the host to handle weird browsers, same for host
                 host_domain = host_domain_parsed.hostname
@@ -132,7 +131,7 @@ def create_origin_only_middleware():
                 origin_domain = parsed.hostname
 
             if loopback and host_domain is not None and origin_domain is not None and len(host_domain) > 0 and len(origin_domain) > 0:
-                if host_domain != origin_domain:
+                if host_domain != origin_domain:  # 防止CSRF攻击，限制只允许同源访问
                     logging.warning("WARNING: request with non matching host and origin {} != {}, returning 403".format(host_domain, origin_domain))
                     return web.Response(status=403)
 
@@ -149,18 +148,18 @@ class PromptServer():
     def __init__(self, loop):
         PromptServer.instance = self  # 将自身赋值给PromptServer.instance，不严格的单例模式，可以创建多个实例，只是后续的实例会覆盖instance
 
-        mimetypes.init()
+        mimetypes.init()  # 正确配置文件的MIME类型
         mimetypes.add_type('application/javascript; charset=utf-8', '.js')
         mimetypes.add_type('image/webp', '.webp')
 
-        self.user_manager = UserManager()
-        self.model_file_manager = ModelFileManager()
-        self.custom_node_manager = CustomNodeManager()
-        self.internal_routes = InternalRoutes(self)
+        self.user_manager = UserManager()  # 用户管理
+        self.model_file_manager = ModelFileManager()  # 模型管理
+        self.custom_node_manager = CustomNodeManager()  # 自定义节点管理
+        self.internal_routes = InternalRoutes(self)  # 内部路由
         self.supports = ["custom_nodes_from_web"]
         self.prompt_queue = None
         self.loop = loop
-        self.messages = asyncio.Queue()
+        self.messages = asyncio.Queue()  # 从任务执行端获取信息，再将信息发送出去
         self.client_session:Optional[aiohttp.ClientSession] = None
         self.number = 0
 
@@ -169,23 +168,23 @@ class PromptServer():
             middlewares.append(compress_body)
 
         if args.enable_cors_header:
-            middlewares.append(create_cors_middleware(args.enable_cors_header))
+            middlewares.append(create_cors_middleware(args.enable_cors_header))  # 允许不同源共享
         else:
-            middlewares.append(create_origin_only_middleware())
+            middlewares.append(create_origin_only_middleware())  # 只允许同源访问
 
-        max_upload_size = round(args.max_upload_size * 1024 * 1024)
+        max_upload_size = round(args.max_upload_size * 1024 * 1024)  # 设置最大上传大小
         self.app = web.Application(client_max_size=max_upload_size, middlewares=middlewares)
-        self.sockets = dict()
+        self.sockets = dict()  # 存储客户端ID与WebSocketResponse的映射
         self.web_root = (
             FrontendManager.init_frontend(args.front_end_version)
             if args.front_end_root is None
             else args.front_end_root
-        )
+        )  # 前端的根目录
         logging.info(f"[Prompt Server] web root: {self.web_root}")
-        routes = web.RouteTableDef()
+        routes = web.RouteTableDef()  # 初始化路由
         self.routes = routes
-        self.last_node_id = None
-        self.client_id = None
+        self.last_node_id = None  # 用于记录当前处理任务执行节点信息
+        self.client_id = None  # 用于记录当前处理任务对应的客户端ID 
 
         self.on_prompt_handlers = []
 
@@ -193,27 +192,27 @@ class PromptServer():
         async def websocket_handler(request):
             ws = web.WebSocketResponse()
             await ws.prepare(request)
-            sid = request.rel_url.query.get('clientId', '')
+            sid = request.rel_url.query.get('clientId', '')  # 获取客户端ID
             if sid:
                 # Reusing existing session, remove old
-                self.sockets.pop(sid, None)
+                self.sockets.pop(sid, None)  # 移除旧的客户端ID，因为后面会重新关联，所以相当于复用
             else:
-                sid = uuid.uuid4().hex
+                sid = uuid.uuid4().hex  # 生成新的客户端ID
 
-            self.sockets[sid] = ws
+            self.sockets[sid] = ws  # 将客户端ID与WebSocketResponse关联
 
             try:
                 # Send initial state to the new client
                 await self.send("status", { "status": self.get_queue_info(), 'sid': sid }, sid)
                 # On reconnect if we are the currently executing client send the current node
-                if self.client_id == sid and self.last_node_id is not None:
+                if self.client_id == sid and self.last_node_id is not None:  # 如果当前客户端的请求正在处理时，将处理的节点信息返回给客户端
                     await self.send("executing", { "node": self.last_node_id }, sid)
 
                 async for msg in ws:
                     if msg.type == aiohttp.WSMsgType.ERROR:
                         logging.warning('ws connection closed with exception %s' % ws.exception())
             finally:
-                self.sockets.pop(sid, None)
+                self.sockets.pop(sid, None)  # 移除客户端ID
             return ws
 
         @routes.get("/")
@@ -743,11 +742,11 @@ class PromptServer():
 
     async def send(self, event, data, sid=None):
         if event == BinaryEventTypes.UNENCODED_PREVIEW_IMAGE:
-            await self.send_image(data, sid=sid)
+            await self.send_image(data, sid=sid)  # 发送图像
         elif isinstance(data, (bytes, bytearray)):
-            await self.send_bytes(event, data, sid)
+            await self.send_bytes(event, data, sid)  # 发送字节数据
         else:
-            await self.send_json(event, data, sid)
+            await self.send_json(event, data, sid)  # 发送JSON数据
 
     def encode_bytes(self, event, data):
         if not isinstance(event, int):
@@ -798,9 +797,9 @@ class PromptServer():
         if sid is None:
             sockets = list(self.sockets.values())
             for ws in sockets:
-                await send_socket_catch_exception(ws.send_json, message)  # 将消息发送给客户端
+                await send_socket_catch_exception(ws.send_json, message)  # 将信息广播给所有的客户端
         elif sid in self.sockets:
-            await send_socket_catch_exception(self.sockets[sid].send_json, message)  # 将消息发送给客户端
+            await send_socket_catch_exception(self.sockets[sid].send_json, message)  # 将消息发送sid对应的客户端
 
     def send_sync(self, event, data, sid=None):
         self.loop.call_soon_threadsafe(

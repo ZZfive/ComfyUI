@@ -34,7 +34,7 @@ class Release(TypedDict):
 
 
 @dataclass
-class FrontEndProvider:
+class FrontEndProvider:  # 提供前端版本信息
     owner: str
     repo: str
 
@@ -108,7 +108,7 @@ def download_release_asset_zip(release: Release, destination_path: str) -> None:
             zip_ref.extractall(destination_path)
 
 
-class FrontendManager:
+class FrontendManager:  # 管理前端版本
     DEFAULT_FRONTEND_PATH = str(Path(__file__).parents[1] / "web")
     CUSTOM_FRONTENDS_ROOT = str(Path(__file__).parents[1] / "web_custom_versions")
 

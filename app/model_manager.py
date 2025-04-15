@@ -30,7 +30,7 @@ class ModelFileManager:
     def add_routes(self, routes):
         # NOTE: This is an experiment to replace `/models`
         @routes.get("/experiment/models")
-        async def get_model_folders(request):
+        async def get_model_folders(request):  # 获取所有模型对应的文件夹
             model_types = list(folder_paths.folder_names_and_paths.keys())
             folder_black_list = ["configs", "custom_nodes"]
             output_folders: list[dict] = []
@@ -42,7 +42,7 @@ class ModelFileManager:
 
         # NOTE: This is an experiment to replace `/models/{folder}`
         @routes.get("/experiment/models/{folder}")
-        async def get_all_models(request):
+        async def get_all_models(request):  # 获取指定文件夹下的所有模型
             folder = request.match_info.get("folder", None)
             if not folder in folder_paths.folder_names_and_paths:
                 return web.Response(status=404)
@@ -50,7 +50,7 @@ class ModelFileManager:
             return web.json_response(files)
 
         @routes.get("/experiment/models/preview/{folder}/{path_index}/{filename:.*}")
-        async def get_model_preview(request):
+        async def get_model_preview(request):  # 获取模型预览图像，支持普通图片和safetensors内嵌预览图
             folder_name = request.match_info.get("folder", None)
             path_index = int(request.match_info.get("path_index", None))
             filename = request.match_info.get("filename", None)

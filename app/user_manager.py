@@ -30,7 +30,7 @@ def get_file_info(path: str, relative_to: str) -> FileInfo:
     }
 
 
-class UserManager():
+class UserManager():  # 负责管理用户和用户文件
     def __init__(self):
         user_directory = folder_paths.get_user_directory()
 
@@ -41,7 +41,7 @@ class UserManager():
                 logging.warning("****** User settings have been changed to be stored on the server instead of browser storage. ******")
                 logging.warning("****** For multi-user setups add the --multi-user CLI argument to enable multiple user profiles. ******")
 
-        if args.multi_user:
+        if args.multi_user:  # 如果启用了多用户模式
             if os.path.isfile(self.get_users_file()):
                 with open(self.get_users_file()) as f:
                     self.users = json.load(f)
@@ -109,7 +109,7 @@ class UserManager():
 
         return user_id
 
-    def add_routes(self, routes):
+    def add_routes(self, routes):  # 添加路由
         self.settings.add_routes(routes)
 
         @routes.get("/users")
@@ -124,7 +124,7 @@ class UserManager():
                 })
 
         @routes.post("/users")
-        async def post_users(request):
+        async def post_users(request):  # 添加用户
             body = await request.json()
             username = body["username"]
             if username in self.users.values():
@@ -134,7 +134,7 @@ class UserManager():
             return web.json_response(user_id)
 
         @routes.get("/userdata")
-        async def listuserdata(request):
+        async def listuserdata(request):  # 列出用户数据文件
             """
             List user data files in a specified directory.
 
@@ -212,7 +212,7 @@ class UserManager():
             return path
 
         @routes.get("/userdata/{file}")
-        async def getuserdata(request):
+        async def getuserdata(request):  # 获取用户数据文件
             path = get_user_data_path(request, check_exists=True)
             if not isinstance(path, str):
                 return path
@@ -220,7 +220,7 @@ class UserManager():
             return web.FileResponse(path)
 
         @routes.post("/userdata/{file}")
-        async def post_userdata(request):
+        async def post_userdata(request):  # 上传或更新用户数据文件
             """
             Upload or update a user data file.
 
@@ -269,7 +269,7 @@ class UserManager():
             return web.json_response(resp)
 
         @routes.delete("/userdata/{file}")
-        async def delete_userdata(request):
+        async def delete_userdata(request):  # 删除用户数据文件
             path = get_user_data_path(request, check_exists=True)
             if not isinstance(path, str):
                 return path
@@ -279,7 +279,7 @@ class UserManager():
             return web.Response(status=204)
 
         @routes.post("/userdata/{file}/move/{dest}")
-        async def move_userdata(request):
+        async def move_userdata(request):  # 移动或重命名用户数据文件
             """
             Move or rename a user data file.
 
