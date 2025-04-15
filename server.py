@@ -48,8 +48,8 @@ async def send_socket_catch_exception(function, message):
 @web.middleware
 async def cache_control(request: web.Request, handler):
     response: web.Response = await handler(request)
-    if request.path.endswith('.js') or request.path.endswith('.css'):  # 如果请求路径以js或css结尾
-        response.headers.setdefault('Cache-Control', 'no-cache')  # 禁用缓存
+    if request.path.endswith('.js') or request.path.endswith('.css') or request.path.endswith('index.json'):
+        response.headers.setdefault('Cache-Control', 'no-cache')
     return response
 
 @web.middleware
@@ -656,7 +656,13 @@ class PromptServer():
                     logging.warning("invalid prompt: {}".format(valid[1]))
                     return web.json_response({"error": valid[1], "node_errors": valid[3]}, status=400)
             else:
-                return web.json_response({"error": "no prompt", "node_errors": []}, status=400)
+                error = {
+                    "type": "no_prompt",
+                    "message": "No prompt provided",
+                    "details": "No prompt provided",
+                    "extra_info": {}
+                }
+                return web.json_response({"error": error, "node_errors": {}}, status=400)
 
         @routes.post("/queue")
         async def post_queue(request):

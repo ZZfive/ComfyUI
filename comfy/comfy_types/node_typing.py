@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 from typing import Literal, TypedDict
+from typing_extensions import NotRequired
 from abc import ABC, abstractmethod
 from enum import Enum
 
@@ -26,6 +27,7 @@ class IO(StrEnum):
     BOOLEAN = "BOOLEAN"
     INT = "INT"
     FLOAT = "FLOAT"
+    COMBO = "COMBO"
     CONDITIONING = "CONDITIONING"
     SAMPLER = "SAMPLER"
     SIGMAS = "SIGMAS"
@@ -66,6 +68,7 @@ class IO(StrEnum):
         b = frozenset(value.split(","))
         return not (b.issubset(a) or a.issubset(b))
 
+
 class RemoteInputOptions(TypedDict):
     route: str
     """The route to the remote source."""
@@ -80,20 +83,32 @@ class RemoteInputOptions(TypedDict):
     refresh: int
     """The TTL of the remote input's value in milliseconds. Specifies the interval at which the remote input's value is refreshed."""
 
+
+class MultiSelectOptions(TypedDict):
+    placeholder: NotRequired[str]
+    """The placeholder text to display in the multi-select widget when no items are selected."""
+    chip: NotRequired[bool]
+    """Specifies whether to use chips instead of comma separated values for the multi-select widget."""
+
+
 class InputTypeOptions(TypedDict):
     """Provides type hinting for the return type of the INPUT_TYPES node function.
 
     Due to IDE limitations with unions, for now all options are available for all types (e.g. `label_on` is hinted even when the type is not `IO.BOOLEAN`).
 
-    Comfy Docs: https://docs.comfy.org/essentials/custom_node_datatypes
+    Comfy Docs: https://docs.comfy.org/custom-nodes/backend/datatypes
     """
 
     default: bool | str | float | int | list | tuple
     """The default value of the widget"""
     defaultInput: bool
-    """Defaults to an input slot rather than a widget"""
+    """@deprecated in v1.16 frontend. v1.16 frontend allows input socket and widget to co-exist.
+    - defaultInput on required inputs should be dropped.
+    - defaultInput on optional inputs should be replaced with forceInput.
+    Ref: https://github.com/Comfy-Org/ComfyUI_frontend/pull/3364
+    """
     forceInput: bool
-    """`defaultInput` and also don't allow converting to a widget"""
+    """Forces the input to be an input slot rather than a widget even a widget is available for the input type."""
     lazy: bool
     """Declares that this input uses lazy evaluation"""
     rawLink: bool
@@ -114,7 +129,7 @@ class InputTypeOptions(TypedDict):
     # default: bool
     label_on: str
     """The label to use in the UI when the bool is True (``BOOLEAN``)"""
-    label_on: str
+    label_off: str
     """The label to use in the UI when the bool is False (``BOOLEAN``)"""
     # class InputTypeString(InputTypeOptions):
     # default: str
@@ -133,7 +148,22 @@ class InputTypeOptions(TypedDict):
     """Specifies which folder to get preview images from if the input has the ``image_upload`` flag.
     """
     remote: RemoteInputOptions
-    """Specifies the configuration for a remote input."""
+    """Specifies the configuration for a remote input.
+    Available after ComfyUI frontend v1.9.7
+    https://github.com/Comfy-Org/ComfyUI_frontend/pull/2422"""
+    control_after_generate: bool
+    """Specifies whether a control widget should be added to the input, adding options to automatically change the value after each prompt is queued. Currently only used for INT and COMBO types."""
+    options: NotRequired[list[str | int | float]]
+    """COMBO type only. Specifies the selectable options for the combo widget.
+    Prefer:
+    ["COMBO", {"options": ["Option 1", "Option 2", "Option 3"]}]
+    Over:
+    [["Option 1", "Option 2", "Option 3"]]
+    """
+    multi_select: NotRequired[MultiSelectOptions]
+    """COMBO type only. Specifies the configuration for a multi-select widget.
+    Available after ComfyUI frontend v1.13.4
+    https://github.com/Comfy-Org/ComfyUI_frontend/pull/2987"""
 
 
 class HiddenInputTypeDict(TypedDict):
@@ -154,7 +184,7 @@ class HiddenInputTypeDict(TypedDict):
 class InputTypeDict(TypedDict):
     """Provides type hinting for node INPUT_TYPES.
 
-    Comfy Docs: https://docs.comfy.org/essentials/custom_node_more_on_inputs
+    Comfy Docs: https://docs.comfy.org/custom-nodes/backend/more_on_inputs
     """
 
     required: dict[str, tuple[IO, InputTypeOptions]]
@@ -164,14 +194,14 @@ class InputTypeDict(TypedDict):
     hidden: HiddenInputTypeDict
     """Offers advanced functionality and server-client communication.
 
-    Comfy Docs: https://docs.comfy.org/essentials/custom_node_more_on_inputs#hidden-inputs
+    Comfy Docs: https://docs.comfy.org/custom-nodes/backend/more_on_inputs#hidden-inputs
     """
 
 
 class ComfyNodeABC(ABC):
     """Abstract base class for Comfy nodes.  Includes the names and expected types of attributes.
 
-    Comfy Docs: https://docs.comfy.org/essentials/custom_node_server_overview
+    Comfy Docs: https://docs.comfy.org/custom-nodes/backend/server_overview
     """
 
     DESCRIPTION: str
@@ -188,7 +218,7 @@ class ComfyNodeABC(ABC):
     CATEGORY: str
     """The category of the node, as per the "Add Node" menu.
 
-    Comfy Docs: https://docs.comfy.org/essentials/custom_node_server_overview#category
+    Comfy Docs: https://docs.comfy.org/custom-nodes/backend/server_overview#category
     """
     EXPERIMENTAL: bool
     """Flags a node as experimental, informing users that it may change or not work as expected."""
@@ -202,9 +232,9 @@ class ComfyNodeABC(ABC):
 
         * Must include the ``required`` key, which describes all inputs that must be connected for the node to execute.
         * The ``optional`` key can be added to describe inputs which do not need to be connected.
-        * The ``hidden`` key offers some advanced functionality.  More info at: https://docs.comfy.org/essentials/custom_node_more_on_inputs#hidden-inputs
+        * The ``hidden`` key offers some advanced functionality.  More info at: https://docs.comfy.org/custom-nodes/backend/more_on_inputs#hidden-inputs
 
-        Comfy Docs: https://docs.comfy.org/essentials/custom_node_server_overview#input-types
+        Comfy Docs: https://docs.comfy.org/custom-nodes/backend/server_overview#input-types
         """
         return {"required": {}}
 
@@ -219,7 +249,7 @@ class ComfyNodeABC(ABC):
 
     By default, a node is not considered an output. Set ``OUTPUT_NODE = True`` to specify that it is.
 
-    Comfy Docs: https://docs.comfy.org/essentials/custom_node_server_overview#output-node
+    Comfy Docs: https://docs.comfy.org/custom-nodes/backend/server_overview#output-node
     """
     INPUT_IS_LIST: bool
     """A flag indicating if this node implements the additional code necessary to deal with OUTPUT_IS_LIST nodes.
@@ -230,7 +260,7 @@ class ComfyNodeABC(ABC):
 
     A node can also override the default input behaviour and receive the whole list in a single call. This is done by setting a class attribute `INPUT_IS_LIST` to ``True``.
 
-    Comfy Docs: https://docs.comfy.org/essentials/custom_node_lists#list-processing
+    Comfy Docs: https://docs.comfy.org/custom-nodes/backend/lists#list-processing
     """
     OUTPUT_IS_LIST: tuple[bool]
     """A tuple indicating which node outputs are lists, but will be connected to nodes that expect individual items.
@@ -248,7 +278,7 @@ class ComfyNodeABC(ABC):
     the node should provide a class attribute `OUTPUT_IS_LIST`, which is a ``tuple[bool]``, of the same length as `RETURN_TYPES`,
     specifying which outputs which should be so treated.
 
-    Comfy Docs: https://docs.comfy.org/essentials/custom_node_lists#list-processing
+    Comfy Docs: https://docs.comfy.org/custom-nodes/backend/lists#list-processing
     """
 
     RETURN_TYPES: tuple[IO]
@@ -258,19 +288,19 @@ class ComfyNodeABC(ABC):
 
         RETURN_TYPES = (IO.INT, "INT", "CUSTOM_TYPE")
 
-    Comfy Docs: https://docs.comfy.org/essentials/custom_node_server_overview#return-types
+    Comfy Docs: https://docs.comfy.org/custom-nodes/backend/server_overview#return-types
     """
     RETURN_NAMES: tuple[str]
     """The output slot names for each item in `RETURN_TYPES`, e.g. ``RETURN_NAMES = ("count", "filter_string")``
 
-    Comfy Docs: https://docs.comfy.org/essentials/custom_node_server_overview#return-names
+    Comfy Docs: https://docs.comfy.org/custom-nodes/backend/server_overview#return-names
     """
     OUTPUT_TOOLTIPS: tuple[str]
     """A tuple of strings to use as tooltips for node outputs, one for each item in `RETURN_TYPES`."""
     FUNCTION: str
     """The name of the function to execute as a literal string, e.g. `FUNCTION = "execute"`
 
-    Comfy Docs: https://docs.comfy.org/essentials/custom_node_server_overview#function
+    Comfy Docs: https://docs.comfy.org/custom-nodes/backend/server_overview#function
     """
 
 
@@ -288,8 +318,19 @@ class CheckLazyMixin:
         Params should match the nodes execution ``FUNCTION`` (self, and all inputs by name).
         Will be executed repeatedly until it returns an empty list, or all requested items were already evaluated (and sent as params).
 
-        Comfy Docs: https://docs.comfy.org/essentials/custom_node_lazy_evaluation#defining-check-lazy-status
+        Comfy Docs: https://docs.comfy.org/custom-nodes/backend/lazy_evaluation#defining-check-lazy-status
         """
 
         need = [name for name in kwargs if kwargs[name] is None]
         return need
+
+
+class FileLocator(TypedDict):
+    """Provides type hinting for the file location"""
+
+    filename: str
+    """The filename of the file."""
+    subfolder: str
+    """The subfolder of the file."""
+    type: Literal["input", "output", "temp"]
+    """The root folder of the file."""
