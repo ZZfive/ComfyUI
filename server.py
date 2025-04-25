@@ -173,10 +173,10 @@ class PromptServer():
             middlewares.append(create_origin_only_middleware())  # 只允许同源访问
 
         max_upload_size = round(args.max_upload_size * 1024 * 1024)  # 设置最大上传大小
-        self.app = web.Application(client_max_size=max_upload_size, middlewares=middlewares)
+        self.app = web.Application(client_max_size=max_upload_size, middlewares=middlewares)  # 初始化服务对象，同时配置中间件
         self.sockets = dict()  # 存储客户端ID与WebSocketResponse的映射
         self.web_root = (
-            FrontendManager.init_frontend(args.front_end_version)
+            FrontendManager.init_frontend(args.front_end_version)  # 返回comfyui-frontend-package这个库的static文件夹路径
             if args.front_end_root is None
             else args.front_end_root
         )  # 前端的根目录
@@ -186,10 +186,10 @@ class PromptServer():
         self.last_node_id = None  # 用于记录当前处理任务执行节点信息
         self.client_id = None  # 用于记录当前处理任务对应的客户端ID 
 
-        self.on_prompt_handlers = []
+        self.on_prompt_handlers = []  # 用于存储on_prompt事件的回调函数
 
         @routes.get('/ws')
-        async def websocket_handler(request):
+        async def websocket_handler(request):  # WebSocket连接处理接口
             ws = web.WebSocketResponse()
             await ws.prepare(request)
             sid = request.rel_url.query.get('clientId', '')  # 获取客户端ID
@@ -203,10 +203,10 @@ class PromptServer():
 
             try:
                 # Send initial state to the new client
-                await self.send("status", { "status": self.get_queue_info(), 'sid': sid }, sid)
+                await self.send("status", { "status": self.get_queue_info(), 'sid': sid }, sid)  # 发送初始状态给新客户端
                 # On reconnect if we are the currently executing client send the current node
                 if self.client_id == sid and self.last_node_id is not None:  # 如果当前客户端的请求正在处理时，将处理的节点信息返回给客户端
-                    await self.send("executing", { "node": self.last_node_id }, sid)
+                    await self.send("executing", { "node": self.last_node_id }, sid)  # 给客户端发送中间状态信息
 
                 async for msg in ws:
                     if msg.type == aiohttp.WSMsgType.ERROR:
@@ -224,18 +224,18 @@ class PromptServer():
             return response
 
         @routes.get("/embeddings")
-        def get_embeddings(self):
+        def get_embeddings(self):  # embedding文件查询接口
             embeddings = folder_paths.get_filename_list("embeddings")
             return web.json_response(list(map(lambda a: os.path.splitext(a)[0], embeddings)))
 
         @routes.get("/models")
-        def list_model_types(request):
+        def list_model_types(request):  # 获取所有可用的模型类型
             model_types = list(folder_paths.folder_names_and_paths.keys())
 
             return web.json_response(model_types)
 
         @routes.get("/models/{folder}")
-        async def get_models(request):
+        async def get_models(request):  # 模型文件查询接口
             folder = request.match_info.get("folder", None)
             if not folder in folder_paths.folder_names_and_paths:
                 return web.Response(status=404)
@@ -243,7 +243,7 @@ class PromptServer():
             return web.json_response(files)
 
         @routes.get("/extensions")
-        async def get_extensions(request):
+        async def get_extensions(request):  # 扩展文件查询接口
             files = glob.glob(os.path.join(
                 glob.escape(self.web_root), 'extensions/**/*.js'), recursive=True)
 
@@ -256,7 +256,7 @@ class PromptServer():
 
             return web.json_response(extensions)
 
-        def get_dir_by_type(dir_type):
+        def get_dir_by_type(dir_type):  # 根据类型获取文件夹路径
             if dir_type is None:
                 dir_type = "input"
 
@@ -270,27 +270,27 @@ class PromptServer():
             return type_dir, dir_type
 
         def compare_image_hash(filepath, image):
-            hasher = node_helpers.hasher()
+            hasher = node_helpers.hasher()  # 获取哈希函数
 
             # function to compare hashes of two images to see if it already exists, fix to #3465
             if os.path.exists(filepath):
                 a = hasher()
                 b = hasher()
                 with open(filepath, "rb") as f:
-                    a.update(f.read())
-                    b.update(image.file.read())
+                    a.update(f.read())  # 读取从filepath路径读取的文件内容，并更新到a中
+                    b.update(image.file.read())  # 读取从image.file路径读取的文件内容，并更新到b中
                     image.file.seek(0)
                     f.close()
-                return a.hexdigest() == b.hexdigest()
+                return a.hexdigest() == b.hexdigest()  # 比较两个哈希值是否相等
             return False
 
-        def image_upload(post, image_save_function=None):
+        def image_upload(post, image_save_function=None):  # 此处的post不是一个字典，而是http请求中的一个请求体
             image = post.get("image")
             overwrite = post.get("overwrite")
             image_is_duplicate = False
 
             image_upload_type = post.get("type")
-            upload_dir, image_upload_type = get_dir_by_type(image_upload_type)
+            upload_dir, image_upload_type = get_dir_by_type(image_upload_type)  # 获取上传文件的目录和类型
 
             if image and image.file:
                 filename = image.filename
@@ -313,19 +313,19 @@ class PromptServer():
                     pass
                 else:
                     i = 1
-                    while os.path.exists(filepath):
+                    while os.path.exists(filepath):  # 如果文件已存在
                         if compare_image_hash(filepath, image): #compare hash to prevent saving of duplicates with same name, fix for #3465
-                            image_is_duplicate = True
+                            image_is_duplicate = True  # 目前传入的图片路径名已存在，并且与当前图片的哈希值相同，则认为图片是重复的
                             break
-                        filename = f"{split[0]} ({i}){split[1]}"
+                        filename = f"{split[0]} ({i}){split[1]}"  # 如果文件已存在，则将文件名加上（i），并更新filepath
                         filepath = os.path.join(full_output_folder, filename)
                         i += 1
 
-                if not image_is_duplicate:
+                if not image_is_duplicate:  # 如果图片不是重复的
                     if image_save_function is not None:
-                        image_save_function(image, post, filepath)
+                        image_save_function(image, post, filepath)  # 如果image_save_function不为空，则调用image_save_function函数
                     else:
-                        with open(filepath, "wb") as f:
+                        with open(filepath, "wb") as f:  # 如果image_save_function为空，则将图片保存到filepath路径
                             f.write(image.file.read())
 
                 return web.json_response({"name" : filename, "subfolder": subfolder, "type": image_upload_type})
@@ -333,17 +333,17 @@ class PromptServer():
                 return web.Response(status=400)
 
         @routes.post("/upload/image")
-        async def upload_image(request):
+        async def upload_image(request):  # 上传图片接口；前端运行如图生图此类工作流时，要先调用此接口将图片上传到服务端
             post = await request.post()
             return image_upload(post)
 
 
         @routes.post("/upload/mask")
-        async def upload_mask(request):
+        async def upload_mask(request):  # 上传掩码图片接口；在LoadImage节点中给图片绘制了mask信息后保存时前端会调用此接口
             post = await request.post()
 
-            def image_save_function(image, post, filepath):
-                original_ref = json.loads(post.get("original_ref"))
+            def image_save_function(image, post, filepath):  # 相对于上传图片接口，就是传入此处定义的图片保存函数image_save_function
+                original_ref = json.loads(post.get("original_ref"))  # 当前上传的mask的对应的原始图片上传时设置的filename、type、subfolder信息
                 filename, output_dir = folder_paths.annotated_filepath(original_ref['filename'])
 
                 if not filename:
@@ -374,13 +374,13 @@ class PromptServer():
                         if hasattr(original_pil,'text'):
                             for key in original_pil.text:
                                 metadata.add_text(key, original_pil.text[key])
-                        original_pil = original_pil.convert('RGBA')
-                        mask_pil = Image.open(image.file).convert('RGBA')
+                        original_pil = original_pil.convert('RGBA')  # 将原始图片转换为RGBA模式
+                        mask_pil = Image.open(image.file).convert('RGBA')  # 将上传的mask图片转换为RGBA模式
 
                         # alpha copy
-                        new_alpha = mask_pil.getchannel('A')
-                        original_pil.putalpha(new_alpha)
-                        original_pil.save(filepath, compress_level=4, pnginfo=metadata)
+                        new_alpha = mask_pil.getchannel('A')  # 获取mask图片的alpha通道
+                        original_pil.putalpha(new_alpha)  # 将mask图片的alpha通道复制到原始图片的alpha通道
+                        original_pil.save(filepath, compress_level=4, pnginfo=metadata)  # 将最终合并后的RGBA图片保存到filepath路径
 
             return image_upload(post, image_save_function)
 
@@ -490,7 +490,7 @@ class PromptServer():
             return web.Response(status=404)
 
         @routes.get("/view_metadata/{folder_name}")
-        async def view_metadata(request):
+        async def view_metadata(request):  # 查看模型文件的metadata信息接口
             folder_name = request.match_info.get("folder_name", None)
             if folder_name is None:
                 return web.Response(status=404)
@@ -548,10 +548,10 @@ class PromptServer():
             return web.json_response(system_stats)
 
         @routes.get("/prompt")
-        async def get_prompt(request):
+        async def get_prompt(request):  # 获取当前队列信息接口
             return web.json_response(self.get_queue_info())
 
-        def node_info(node_class):
+        def node_info(node_class):  # 获取节点信息接口
             obj_class = nodes.NODE_CLASS_MAPPINGS[node_class]
             info = {}
             info['input'] = obj_class.INPUT_TYPES()
@@ -562,7 +562,7 @@ class PromptServer():
             info['name'] = node_class
             info['display_name'] = nodes.NODE_DISPLAY_NAME_MAPPINGS[node_class] if node_class in nodes.NODE_DISPLAY_NAME_MAPPINGS.keys() else node_class
             info['description'] = obj_class.DESCRIPTION if hasattr(obj_class,'DESCRIPTION') else ''
-            info['python_module'] = getattr(obj_class, "RELATIVE_PYTHON_MODULE", "nodes")
+            info['python_module'] = getattr(obj_class, "RELATIVE_PYTHON_MODULE", "nodes")  # 获取节点所在的python模块
             info['category'] = 'sd'
             if hasattr(obj_class, 'OUTPUT_NODE') and obj_class.OUTPUT_NODE == True:
                 info['output_node'] = True
@@ -585,7 +585,7 @@ class PromptServer():
             return info
 
         @routes.get("/object_info")
-        async def get_object_info(request):
+        async def get_object_info(request):  # 获取所有节点信息接口
             with folder_paths.cache_helper:
                 out = {}
                 for x in nodes.NODE_CLASS_MAPPINGS:
@@ -597,7 +597,7 @@ class PromptServer():
                 return web.json_response(out)
 
         @routes.get("/object_info/{node_class}")
-        async def get_object_info_node(request):
+        async def get_object_info_node(request):  # 获取指定节点信息接口
             node_class = request.match_info.get("node_class", None)
             out = {}
             if (node_class is not None) and (node_class in nodes.NODE_CLASS_MAPPINGS):
@@ -605,19 +605,19 @@ class PromptServer():
             return web.json_response(out)
 
         @routes.get("/history")
-        async def get_history(request):
+        async def get_history(request):  # 获取历史记录接口
             max_items = request.rel_url.query.get("max_items", None)
             if max_items is not None:
                 max_items = int(max_items)
             return web.json_response(self.prompt_queue.get_history(max_items=max_items))
 
         @routes.get("/history/{prompt_id}")
-        async def get_history_prompt_id(request):
+        async def get_history_prompt_id(request):  # 获取指定prompt_id的历史记录接口
             prompt_id = request.match_info.get("prompt_id", None)
             return web.json_response(self.prompt_queue.get_history(prompt_id=prompt_id))
 
         @routes.get("/queue")
-        async def get_queue(request):
+        async def get_queue(request):  # 获取当前队列信息接口
             queue_info = {}
             current_queue = self.prompt_queue.get_current_queue()
             queue_info['queue_running'] = current_queue[0]
@@ -625,7 +625,7 @@ class PromptServer():
             return web.json_response(queue_info)
 
         @routes.post("/prompt")
-        async def post_prompt(request):
+        async def post_prompt(request):  # 提交prompt接口
             logging.info("got prompt")
             json_data =  await request.json()
             json_data = self.trigger_on_prompt(json_data)
@@ -668,26 +668,26 @@ class PromptServer():
                 return web.json_response({"error": error, "node_errors": {}}, status=400)
 
         @routes.post("/queue")
-        async def post_queue(request):
+        async def post_queue(request):  # 队列操作接口；可清空任务队列和删除指定任务
             json_data =  await request.json()
             if "clear" in json_data:
                 if json_data["clear"]:
-                    self.prompt_queue.wipe_queue()
+                    self.prompt_queue.wipe_queue()  # 清空任务队列
             if "delete" in json_data:
                 to_delete = json_data['delete']
                 for id_to_delete in to_delete:
                     delete_func = lambda a: a[1] == id_to_delete
-                    self.prompt_queue.delete_queue_item(delete_func)
+                    self.prompt_queue.delete_queue_item(delete_func)  # 从任务队列中删除指定任务
 
             return web.Response(status=200)
 
         @routes.post("/interrupt")
-        async def post_interrupt(request):
+        async def post_interrupt(request):  # 中断处理接口
             nodes.interrupt_processing()
             return web.Response(status=200)
 
         @routes.post("/free")
-        async def post_free(request):
+        async def post_free(request):  # 释放内存接口
             json_data = await request.json()
             unload_models = json_data.get("unload_models", False)
             free_memory = json_data.get("free_memory", False)
@@ -698,7 +698,7 @@ class PromptServer():
             return web.Response(status=200)
 
         @routes.post("/history")
-        async def post_history(request):
+        async def post_history(request):  # 历史记录操作接口；可清空历史记录和删除指定历史记录
             json_data =  await request.json()
             if "clear" in json_data:
                 if json_data["clear"]:
@@ -715,43 +715,45 @@ class PromptServer():
         self.client_session = aiohttp.ClientSession(timeout=timeout)  # 创建HTTP客户端
 
     def add_routes(self):
-        self.user_manager.add_routes(self.routes)
-        self.model_file_manager.add_routes(self.routes)
-        self.custom_node_manager.add_routes(self.routes, self.app, nodes.LOADED_MODULE_DIRS.items())
-        self.app.add_subapp('/internal', self.internal_routes.get_app())
+        self.user_manager.add_routes(self.routes)  # 添加用户管理路由
+        self.model_file_manager.add_routes(self.routes)  # 添加模型文件管理路由
+        self.custom_node_manager.add_routes(self.routes, self.app, nodes.LOADED_MODULE_DIRS.items())  # 添加自定义节点管理路由
+        self.app.add_subapp('/internal', self.internal_routes.get_app())  # 将内部路由的子应用挂在到app的指定路径前缀下
 
         # Prefix every route with /api for easier matching for delegation.
         # This is very useful for frontend dev server, which need to forward
         # everything except serving of static files.
         # Currently both the old endpoints without prefix and new endpoints with
         # prefix are supported.
+        # 在每个路由前添加 /api 前缀，以便于委托匹配。这对于需要转发除静态文件服务之外所有信息的前端开发服务器非常有用。
+        # 目前，旧的无前缀端点和新的带前缀端点均受支持。
         api_routes = web.RouteTableDef()
-        for route in self.routes:
+        for route in self.routes:  # 遍历所有已定义的路由
             # Custom nodes might add extra static routes. Only process non-static
             # routes to add /api prefix.
-            if isinstance(route, web.RouteDef):
-                api_routes.route(route.method, "/api" + route.path)(route.handler, **route.kwargs)
-        self.app.add_routes(api_routes)
-        self.app.add_routes(self.routes)
+            if isinstance(route, web.RouteDef):  # 只处理非静态资源的路由
+                api_routes.route(route.method, "/api" + route.path)(route.handler, **route.kwargs)  # 为每个路由创建一个带 /api 前缀的副本
+        self.app.add_routes(api_routes)  # 添加带 /api 前缀的路由
+        self.app.add_routes(self.routes)  # 添加原始路由，即同时兼容了两类路由
 
         # Add routes from web extensions.
         for name, dir in nodes.EXTENSION_WEB_DIRS.items():
-            self.app.add_routes([web.static('/extensions/' + name, dir)])
+            self.app.add_routes([web.static('/extensions/' + name, dir)])  # 为每个扩展添加静态文件路由
 
         workflow_templates_path = FrontendManager.templates_path()
         if workflow_templates_path:
             self.app.add_routes([
                 web.static('/templates', workflow_templates_path)
-            ])
+            ])  # 添加comfyui_workflow_templates这个库中提供的官方工作流模板
 
         self.app.add_routes([
             web.static('/', self.web_root),
-        ])
+        ])  # 将应用程序的根目录设置为静态文件服务，这意味着可以通过服务应用的根目录访问应用程序的静态文件，就是前端页面
 
     def get_queue_info(self):
         prompt_info = {}
         exec_info = {}
-        exec_info['queue_remaining'] = self.prompt_queue.get_tasks_remaining()
+        exec_info['queue_remaining'] = self.prompt_queue.get_tasks_remaining()  # 获取队列中剩余的任务数量
         prompt_info['exec_info'] = exec_info
         return prompt_info
 
@@ -763,16 +765,16 @@ class PromptServer():
         else:
             await self.send_json(event, data, sid)  # 发送JSON数据
 
-    def encode_bytes(self, event, data):
+    def encode_bytes(self, event, data):  # 将事件和数据编码为字节数据
         if not isinstance(event, int):
             raise RuntimeError(f"Binary event types must be integers, got {event}")
 
-        packed = struct.pack(">I", event)
-        message = bytearray(packed)
-        message.extend(data)
+        packed = struct.pack(">I", event)  # 将事件转换为字节数据
+        message = bytearray(packed)  # 将字节数据转换为字节数组
+        message.extend(data)  # 将数据添加到字节数组中
         return message
 
-    async def send_image(self, image_data, sid=None):
+    async def send_image(self, image_data, sid=None):  # 发送图像
         image_type = image_data[0]
         image = image_data[1]
         max_size = image_data[2]
@@ -796,15 +798,15 @@ class PromptServer():
         preview_bytes = bytesIO.getvalue()
         await self.send_bytes(BinaryEventTypes.PREVIEW_IMAGE, preview_bytes, sid=sid)  # 将预览图像发送给客户端
 
-    async def send_bytes(self, event, data, sid=None):
-        message = self.encode_bytes(event, data)
+    async def send_bytes(self, event, data, sid=None):  # 向 WebSocket 客户端发送字节消息
+        message = self.encode_bytes(event, data)  # 将事件和数据编码为字节数据
 
-        if sid is None:
+        if sid is None:  # 如果sid不存在，会将data广播给所有ws连接
             sockets = list(self.sockets.values())
             for ws in sockets:
                 await send_socket_catch_exception(ws.send_bytes, message)  # 将消息发送给客户端
         elif sid in self.sockets:
-            await send_socket_catch_exception(self.sockets[sid].send_bytes, message)  # 将消息发送给客户端
+            await send_socket_catch_exception(self.sockets[sid].send_bytes, message)  # 将消息发送sid对应的客户端
 
     async def send_json(self, event, data, sid=None):
         message = {"type": event, "data": data}
@@ -817,13 +819,13 @@ class PromptServer():
             await send_socket_catch_exception(self.sockets[sid].send_json, message)  # 将消息发送sid对应的客户端
 
     def send_sync(self, event, data, sid=None):
-        self.loop.call_soon_threadsafe(
+        self.loop.call_soon_threadsafe(  # 确保消息队列的线程安全性
             self.messages.put_nowait, (event, data, sid))  # 将消息添加到消息队列中
 
-    def queue_updated(self):
+    def queue_updated(self):  # 在队列更新时，调用 send_sync 方法发送队列状态信息
         self.send_sync("status", { "status": self.get_queue_info() })  # 将队列状态发送给客户端
 
-    async def publish_loop(self):
+    async def publish_loop(self):  # 持续地从messages队列中获取消息，并将消息发送给客户端
         while True:
             msg = await self.messages.get()  # 从消息队列中获取消息
             await self.send(*msg)  # 将消息发送给客户端
@@ -831,16 +833,16 @@ class PromptServer():
     async def start(self, address, port, verbose=True, call_on_start=None):
         await self.start_multi_address([(address, port)], call_on_start=call_on_start)
 
-    async def start_multi_address(self, addresses, call_on_start=None, verbose=True):
+    async def start_multi_address(self, addresses, call_on_start=None, verbose=True):  # 将web应用与多个地址绑定，允许服务同时在多个网络接口上监听连接请求
         runner = web.AppRunner(self.app, access_log=None)  # 创建aiohttp.web.AppRunner实例来管理web应用
-        await runner.setup()  # 初始化AppRunner
+        await runner.setup()  # app应用运行时初始化；应用生命周期时间触发、中间件初始化等
         ssl_ctx = None
-        scheme = "http"
+        scheme = "http"  # 默认使用http协议
         if args.tls_keyfile and args.tls_certfile:  # 如果设置了TLS密钥和证书文件
                 ssl_ctx = ssl.SSLContext(protocol=ssl.PROTOCOL_TLS_SERVER, verify_mode=ssl.CERT_NONE)
                 ssl_ctx.load_cert_chain(certfile=args.tls_certfile,
                                 keyfile=args.tls_keyfile)  # 加载TLS证书和密钥
-                scheme = "https"  # 设置scheme为https
+                scheme = "https"  # 设置scheme为https协议
 
         if verbose:
             logging.info("Starting server\n")
@@ -848,7 +850,7 @@ class PromptServer():
             address = addr[0]
             port = addr[1]
             site = web.TCPSite(runner, address, port, ssl_context=ssl_ctx)  # 创建一个TCPSite对象，用于管理TCP连接
-            await site.start()  # 启动TCPSite，开始监听TCP连接
+            await site.start()  # 启动TCPSite，开始监听TCP连接；网络服务初始化，启动网络监听等
 
             if not hasattr(self, 'address'):  # 保存第一个地址作为默认地址
                 self.address = address #TODO: remove this

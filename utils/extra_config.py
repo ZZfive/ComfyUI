@@ -5,9 +5,9 @@ import logging
 
 def load_extra_path_config(yaml_path):
     with open(yaml_path, 'r', encoding='utf-8') as stream:
-        config = yaml.safe_load(stream)
+        config = yaml.safe_load(stream)  # 加载yaml文件
     yaml_dir = os.path.dirname(os.path.abspath(yaml_path))
-    for c in config:
+    for c in config:  # 遍历yaml文件中的每个配置
         conf = config[c]
         if conf is None:
             continue

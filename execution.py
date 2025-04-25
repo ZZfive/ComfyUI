@@ -900,15 +900,15 @@ MAXIMUM_HISTORY_SIZE = 10000
 class PromptQueue:
     def __init__(self, server):
         self.server = server
-        self.mutex = threading.RLock()
-        self.not_empty = threading.Condition(self.mutex)
+        self.mutex = threading.RLock()  # 一个可重入锁（RLock），用于实现线程间的互斥访问；可重入锁允许同一线程多次获取锁，而不会造成死锁
+        self.not_empty = threading.Condition(self.mutex)  # 创建了一个条件变量，条件变量通常用于线程间的通信和同步，它可以让一个线程等待某个条件的发生，另一个线程在满足条件时通知等待的线程
         self.task_counter = 0
-        self.queue = []
-        self.currently_running = {}
-        self.history = {}
-        self.flags = {}
+        self.queue = []  # 存放任务的队列
+        self.currently_running = {}  # 存放正在执行的任务
+        self.history = {}  # 存放历史任务
+        self.flags = {}  # 存放标志
         # 将自身又赋值给了传入server对象的prompt_queue属性，属于双向引用设计模式，适合需要双向通信但又要保持模块独立的场景
-        # 即此处的server在接收外部请求后会经任务添加到self.queue中，而在队列内部又可通过调用self.server.queue_updated()向调用方发送消息
+        # 即此处的server在接收外部请求后会将任务添加到self.queue中，而在队列内部又可通过调用self.server.queue_updated()向调用方发送消息
         server.prompt_queue = self
 
     def put(self, item):

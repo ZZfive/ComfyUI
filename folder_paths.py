@@ -9,9 +9,9 @@ from collections.abc import Collection
 
 from comfy.cli_args import args
 
-supported_pt_extensions: set[str] = {'.ckpt', '.pt', '.pt2', '.bin', '.pth', '.safetensors', '.pkl', '.sft'}
+supported_pt_extensions: set[str] = {'.ckpt', '.pt', '.pt2', '.bin', '.pth', '.safetensors', '.pkl', '.sft'}  # 支持的模型文件扩展名
 
-folder_names_and_paths: dict[str, tuple[list[str], set[str]]] = {}  # value是一个元素，第一个元素是存放对应模型或配置的列表，即表明相同的模型或配置可以存储在多个路径下，第二个元素也是一个列表，存放对应文件的扩展名
+folder_names_and_paths: dict[str, tuple[list[str], set[str]]] = {}  # value是一个元组，第一个元素是存放对应模型或配置的列表，即表明相同的模型或配置可以存储在多个路径下，第二个元素也是一个列表，存放对应文件的扩展名
 
 # --base-directory - Resets all default paths configured in folder_paths with a new base path
 if args.base_directory:

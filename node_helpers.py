@@ -35,7 +35,7 @@ def hasher():
         "sha256": hashlib.sha256,
         "sha512": hashlib.sha512
     }
-    return hashfuncs[args.default_hashing_function]
+    return hashfuncs[args.default_hashing_function]  # 根据命令行参数选择哈希函数
 
 def string_to_torch_dtype(string):
     if string == "fp32":

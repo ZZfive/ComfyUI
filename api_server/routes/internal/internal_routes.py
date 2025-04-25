@@ -19,11 +19,11 @@ class InternalRoutes:
         self.terminal_service = TerminalService(prompt_server)
 
     def setup_routes(self):
-        @self.routes.get('/logs')
+        @self.routes.get('/logs')  # 获取日志
         async def get_logs(request):
             return web.json_response("".join([(l["t"] + " - " + l["m"]) for l in app.logger.get_logs()]))
 
-        @self.routes.get('/logs/raw')
+        @self.routes.get('/logs/raw')  # 获取原始日志
         async def get_raw_logs(request):
             self.terminal_service.update_size()
             return web.json_response({
@@ -31,7 +31,7 @@ class InternalRoutes:
                 "size": {"cols": self.terminal_service.cols, "rows": self.terminal_service.rows}
             })
 
-        @self.routes.patch('/logs/subscribe')
+        @self.routes.patch('/logs/subscribe')  # 订阅日志
         async def subscribe_logs(request):
             json_data = await request.json()
             client_id = json_data["clientId"]
@@ -44,14 +44,14 @@ class InternalRoutes:
             return web.Response(status=200)
 
 
-        @self.routes.get('/folder_paths')
+        @self.routes.get('/folder_paths')  # 获取文件夹路径
         async def get_folder_paths(request):
             response = {}
             for key in folder_names_and_paths:
                 response[key] = folder_names_and_paths[key][0]
             return web.json_response(response)
 
-        @self.routes.get('/files/{directory_type}')
+        @self.routes.get('/files/{directory_type}')  # 获取文件
         async def get_files(request: web.Request) -> web.Response:
             directory_type = request.match_info['directory_type']
             if directory_type not in ("output", "input", "temp"):
@@ -66,8 +66,8 @@ class InternalRoutes:
 
 
     def get_app(self):
-        if self._app is None:
+        if self._app is None:  # 初始化函数中定义为None，应用实例只在第一次调用 get_app() 时创建，懒加载
             self._app = web.Application()
-            self.setup_routes()
-            self._app.add_routes(self.routes)
+            self.setup_routes()  # 设置路由
+            self._app.add_routes(self.routes)  # 添加路由
         return self._app

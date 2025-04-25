@@ -102,7 +102,7 @@ class CustomNodeManager:
                 for file in glob.glob(
                     os.path.join(folder, "*/example_workflows/*.json")
                 )
-            ]
+            ]  # 获取custom_nodes文件夹下的所有example_workflows文件夹下的json文件
             workflow_templates_dict = (
                 {}
             )  # custom_nodes folder name -> example workflow names
@@ -129,6 +129,6 @@ class CustomNodeManager:
                 )  # 添加路由，将每个自定义节点文件夹的example_workflows文件夹下的文件作为静态文件提供
 
         @routes.get("/i18n")
-        async def get_i18n(request):
+        async def get_i18n(request):  # 获取所有自定义节点的翻译
             """Returns translations from all custom nodes' locales folders."""
             return web.json_response(self.build_translations())

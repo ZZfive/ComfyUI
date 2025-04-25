@@ -2106,7 +2106,7 @@ def get_module_name(module_path: str) -> str:
 
 
 def load_custom_node(module_path: str, ignore=set(), module_parent="custom_nodes") -> bool:
-    module_name = get_module_name(module_path)
+    module_name = get_module_name(module_path)  # 获取模块名，就是包含节点定义的文件名或路径名
     if os.path.isfile(module_path):
         sp = os.path.splitext(module_path)
         module_name = sp[0]
@@ -2116,32 +2116,32 @@ def load_custom_node(module_path: str, ignore=set(), module_parent="custom_nodes
 
     try:
         logging.debug("Trying to load custom node {}".format(module_path))
-        if os.path.isfile(module_path):
+        if os.path.isfile(module_path):  # 如果module_path是文件
             module_spec = importlib.util.spec_from_file_location(sys_module_name, module_path)
             module_dir = os.path.split(module_path)[0]
         else:
             module_spec = importlib.util.spec_from_file_location(sys_module_name, os.path.join(module_path, "__init__.py"))
             module_dir = module_path
 
-        module = importlib.util.module_from_spec(module_spec)
-        sys.modules[sys_module_name] = module
+        module = importlib.util.module_from_spec(module_spec)  # 从规范创建一个模块
+        sys.modules[sys_module_name] = module  # 将模块添加到sys.modules中
         module_spec.loader.exec_module(module)  # 动态加载并执行module
 
-        LOADED_MODULE_DIRS[module_name] = os.path.abspath(module_dir)
+        LOADED_MODULE_DIRS[module_name] = os.path.abspath(module_dir)  # 将模块的目录添加到LOADED_MODULE_DIRS中
 
-        if hasattr(module, "WEB_DIRECTORY") and getattr(module, "WEB_DIRECTORY") is not None:
-            web_dir = os.path.abspath(os.path.join(module_dir, getattr(module, "WEB_DIRECTORY")))
-            if os.path.isdir(web_dir):
-                EXTENSION_WEB_DIRS[module_name] = web_dir
+        if hasattr(module, "WEB_DIRECTORY") and getattr(module, "WEB_DIRECTORY") is not None:  # 如果模块有WEB_DIRECTORY属性
+            web_dir = os.path.abspath(os.path.join(module_dir, getattr(module, "WEB_DIRECTORY")))  # 获取web_dir的路径
+            if os.path.isdir(web_dir):  # 如果web_dir是目录
+                EXTENSION_WEB_DIRS[module_name] = web_dir  # 将web_dir添加到EXTENSION_WEB_DIRS中
 
-        if hasattr(module, "NODE_CLASS_MAPPINGS") and getattr(module, "NODE_CLASS_MAPPINGS") is not None:
-            for name, node_cls in module.NODE_CLASS_MAPPINGS.items():
-                if name not in ignore:
-                    NODE_CLASS_MAPPINGS[name] = node_cls
-                    node_cls.RELATIVE_PYTHON_MODULE = "{}.{}".format(module_parent, get_module_name(module_path))
-            if hasattr(module, "NODE_DISPLAY_NAME_MAPPINGS") and getattr(module, "NODE_DISPLAY_NAME_MAPPINGS") is not None:
-                NODE_DISPLAY_NAME_MAPPINGS.update(module.NODE_DISPLAY_NAME_MAPPINGS)
-            return True
+        if hasattr(module, "NODE_CLASS_MAPPINGS") and getattr(module, "NODE_CLASS_MAPPINGS") is not None:  # 如果模块有NODE_CLASS_MAPPINGS属性
+            for name, node_cls in module.NODE_CLASS_MAPPINGS.items():  # 遍历NODE_CLASS_MAPPINGS中的每个节点
+                if name not in ignore:  # 如果节点名不在忽略列表中
+                    NODE_CLASS_MAPPINGS[name] = node_cls  # 将节点添加到NODE_CLASS_MAPPINGS中
+                    node_cls.RELATIVE_PYTHON_MODULE = "{}.{}".format(module_parent, get_module_name(module_path))  # 设置节点所在的python模块
+            if hasattr(module, "NODE_DISPLAY_NAME_MAPPINGS") and getattr(module, "NODE_DISPLAY_NAME_MAPPINGS") is not None:  # 如果模块有NODE_DISPLAY_NAME_MAPPINGS属性
+                NODE_DISPLAY_NAME_MAPPINGS.update(module.NODE_DISPLAY_NAME_MAPPINGS)  # 更新NODE_DISPLAY_NAME_MAPPINGS
+            return True  # 返回True表示加载成功
         else:
             logging.warning(f"Skip {module_path} module for custom nodes due to the lack of NODE_CLASS_MAPPINGS.")
             return False
@@ -2162,18 +2162,18 @@ def init_external_custom_nodes():
     """
     base_node_names = set(NODE_CLASS_MAPPINGS.keys())
     node_paths = folder_paths.get_folder_paths("custom_nodes")
-    node_import_times = []
+    node_import_times = []  # 用于存储节点加载时间
     for custom_node_path in node_paths:
-        possible_modules = os.listdir(os.path.realpath(custom_node_path))
-        if "__pycache__" in possible_modules:
+        possible_modules = os.listdir(os.path.realpath(custom_node_path))  # 获取custom_node_path目录下的所有文件和文件夹
+        if "__pycache__" in possible_modules:  # 如果__pycache__在possible_modules中
             possible_modules.remove("__pycache__")
 
         for possible_module in possible_modules:
             module_path = os.path.join(custom_node_path, possible_module)
-            if os.path.isfile(module_path) and os.path.splitext(module_path)[1] != ".py": continue
-            if module_path.endswith(".disabled"): continue
-            time_before = time.perf_counter()
-            success = load_custom_node(module_path, base_node_names, module_parent="custom_nodes")
+            if os.path.isfile(module_path) and os.path.splitext(module_path)[1] != ".py": continue  # 如果module_path是文件且不是.py文件，则跳过
+            if module_path.endswith(".disabled"): continue  # 如果module_path以.disabled结尾，则跳过
+            time_before = time.perf_counter()  # 记录开始时间
+            success = load_custom_node(module_path, base_node_names, module_parent="custom_nodes")  # 加载节点
             node_import_times.append((time.perf_counter() - time_before, module_path, success))
 
     if len(node_import_times) > 0:
@@ -2260,19 +2260,19 @@ def init_builtin_extra_nodes():
         "nodes_fresca.py",
     ]
 
-    api_nodes_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "comfy_api_nodes")
+    api_nodes_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "comfy_api_nodes")  # 获取comfy_api_nodes文件夹的路径，官方实现的调用外部api的节点
     api_nodes_files = [
         "nodes_api.py",
     ]
 
-    import_failed = []
+    import_failed = []  # 用于存储加载失败的节点
     for node_file in extras_files:
-        if not load_custom_node(os.path.join(extras_dir, node_file), module_parent="comfy_extras"):
-            import_failed.append(node_file)
+        if not load_custom_node(os.path.join(extras_dir, node_file), module_parent="comfy_extras"):  # 加载comfy_extras文件夹中的节点
+            import_failed.append(node_file)  # 如果加载失败，则将节点文件名添加到import_failed列表中
 
     for node_file in api_nodes_files:
-        if not load_custom_node(os.path.join(api_nodes_dir, node_file), module_parent="comfy_api_nodes"):
-            import_failed.append(node_file)
+        if not load_custom_node(os.path.join(api_nodes_dir, node_file), module_parent="comfy_api_nodes"):  # 加载comfy_api_nodes文件夹中的节点
+            import_failed.append(node_file)  # 如果加载失败，则将节点文件名添加到import_failed列表中
 
     return import_failed
 

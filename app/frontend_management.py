@@ -20,7 +20,7 @@ from comfy.cli_args import DEFAULT_VERSION_STRING
 import app.logger
 
 # The path to the requirements.txt file
-req_path = Path(__file__).parents[1] / "requirements.txt"
+req_path = Path(__file__).parents[1] / "requirements.txt"  # 获取requirements.txt文件的路径
 
 
 def frontend_install_warning_message():
@@ -46,11 +46,11 @@ def check_frontend_version():
         return tuple(map(int, version.split(".")))
 
     try:
-        frontend_version_str = version("comfyui-frontend-package")
+        frontend_version_str = version("comfyui-frontend-package")  # 获取运行的虚拟环境中安装的comfyui-frontend-package版本号
         frontend_version = parse_version(frontend_version_str)
         with open(req_path, "r", encoding="utf-8") as f:
-            required_frontend = parse_version(f.readline().split("=")[-1])
-        if frontend_version < required_frontend:
+            required_frontend = parse_version(f.readline().split("=")[-1])  # 获取requirements.txt文件中comfyui-frontend-package的版本号
+        if frontend_version < required_frontend:  # 如果当前版本小于要求的版本
             app.logger.log_startup_warning(
                 f"""
 ________________________________________________________________________
@@ -167,9 +167,9 @@ class FrontendManager:  # 管理前端版本
     @classmethod
     def default_frontend_path(cls) -> str:
         try:
-            import comfyui_frontend_package
+            import comfyui_frontend_package  # 导入comfyui_frontend_package模块
 
-            return str(importlib.resources.files(comfyui_frontend_package) / "static")
+            return str(importlib.resources.files(comfyui_frontend_package) / "static")  # 返回comfyui_frontend_package模块中的static文件夹路径
         except ImportError:
             logging.error(
                 f"""
@@ -243,8 +243,8 @@ comfyui-workflow-templates is not installed.
             main error source might be request timeout or invalid URL.
         """
         if version_string == DEFAULT_VERSION_STRING:
-            check_frontend_version()
-            return cls.default_frontend_path()
+            check_frontend_version()  # 检查前端版本
+            return cls.default_frontend_path()  # 返回默认前端路径
 
         repo_owner, repo_name, version = cls.parse_version_string(version_string)
 

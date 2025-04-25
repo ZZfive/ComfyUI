@@ -14,8 +14,8 @@ import sys
 
 if __name__ == "__main__":
     #NOTE: These do not do anything on core ComfyUI which should already have no communication with the internet, they are for custom nodes.
-    os.environ['HF_HUB_DISABLE_TELEMETRY'] = '1'
-    os.environ['DO_NOT_TRACK'] = '1'
+    os.environ['HF_HUB_DISABLE_TELEMETRY'] = '1'  # 禁用 Hugging Face Hub 的遥测数据收集
+    os.environ['DO_NOT_TRACK'] = '1'  # 一个常用的环境变量，许多开源库和工具会检查此变量，以确定是否收集用户数据
 
 
 setup_logger(log_level=args.verbose, use_stdout=args.log_stdout)
@@ -59,8 +59,8 @@ def execute_prestartup_script():
     def execute_script(script_path):
         module_name = os.path.splitext(script_path)[0]
         try:
-            spec = importlib.util.spec_from_file_location(module_name, script_path)
-            module = importlib.util.module_from_spec(spec)
+            spec = importlib.util.spec_from_file_location(module_name, script_path)  # 从文件路径创建一个模块规范
+            module = importlib.util.module_from_spec(spec)  # 从规范创建一个模块
             spec.loader.exec_module(module)  # 动态加载并执行script_path对应的脚本
             return True
         except Exception as e:
@@ -78,13 +78,13 @@ def execute_prestartup_script():
         for possible_module in possible_modules:
             module_path = os.path.join(custom_node_path, possible_module)
             if os.path.isfile(module_path) or module_path.endswith(".disabled") or module_path == "__pycache__":
-                continue  # 如果module_path是文件或文件名以.disabled结尾或是__pycache__，则跳过
+                continue  # 如果module_path是文件或以.disabled结尾或是__pycache__，则跳过
 
             script_path = os.path.join(module_path, "prestartup_script.py")
             if os.path.exists(script_path):
-                time_before = time.perf_counter()
-                success = execute_script(script_path)
-                node_prestartup_times.append((time.perf_counter() - time_before, module_path, success))
+                time_before = time.perf_counter()  # 记录开始时间
+                success = execute_script(script_path)  # 执行脚本
+                node_prestartup_times.append((time.perf_counter() - time_before, module_path, success))  # 记录执行时间
     if len(node_prestartup_times) > 0:
         logging.info("\nPrestartup times for custom nodes:")
         for n in sorted(node_prestartup_times):
@@ -158,9 +158,9 @@ def cuda_malloc_warning():
 def prompt_worker(q, server_instance):
     current_time: float = 0.0
     cache_type = execution.CacheType.CLASSIC
-    if args.cache_lru > 0:
+    if args.cache_lru > 0:  # 如果设置了lru缓存大小，则使用LRU缓存
         cache_type = execution.CacheType.LRU
-    elif args.cache_none:
+    elif args.cache_none:  # 如果设置了不使用缓存，则使用依赖感知的缓存
         cache_type = execution.CacheType.DEPENDENCY_AWARE
 
     e = execution.PromptExecutor(server_instance, cache_type=cache_type, cache_size=args.cache_lru)
@@ -222,7 +222,7 @@ async def run(server_instance, address='', port=8188, verbose=True, call_on_star
     for addr in address.split(","):
         addresses.append((addr, port))
     await asyncio.gather(
-        server_instance.start_multi_address(addresses, call_on_start, verbose), server_instance.publish_loop()
+        server_instance.start_multi_address(addresses, call_on_start, verbose), server_instance.publish_loop()  # publish_loop会持续地从messages队列中获取消息，并将消息发送给客户端
     )  # 异步同时运行server.start_multi_address和server.publish_loop两个函数
 
 
@@ -270,7 +270,7 @@ def start_comfyui(asyncio_loop=None):
 
     nodes.init_extra_nodes(init_custom_nodes=not args.disable_all_custom_nodes)  # 动态加载自定义节点
 
-    cuda_malloc_warning()
+    cuda_malloc_warning()  # 检查目前使用的显卡是否支持cuda-malloc
 
     prompt_server.add_routes()  # prompt_server对象添加hTTP路由
     hijack_progress(prompt_server)  # 设置进度条钩子
