@@ -19,9 +19,9 @@ class DynamicPrompt:
         # The original prompt provided by the user
         self.original_prompt = original_prompt
         # Any extra pieces of the graph created during execution
-        self.ephemeral_prompt = {}
-        self.ephemeral_parents = {}
-        self.ephemeral_display = {}
+        self.ephemeral_prompt = {}  # 存储执行过程中动态创建的临时节点
+        self.ephemeral_parents = {}  # 存储执行过程中动态创建的临时节点到其父节点的映射关系
+        self.ephemeral_display = {}  # 存储执行过程中动态创建的临时节点到显示节点的映射关系
 
     def get_node(self, node_id):
         if node_id in self.ephemeral_prompt:
@@ -39,7 +39,7 @@ class DynamicPrompt:
         self.ephemeral_display[node_id] = display_id
 
     def get_real_node_id(self, node_id):
-        while node_id in self.ephemeral_parents:
+        while node_id in self.ephemeral_parents:  # 如果节点ID在ephemeral_parents中，则不断更新节点ID为父节点ID
             node_id = self.ephemeral_parents[node_id]
         return node_id
 
@@ -52,10 +52,10 @@ class DynamicPrompt:
         return node_id
 
     def all_node_ids(self):
-        return set(self.original_prompt.keys()).union(set(self.ephemeral_prompt.keys()))
+        return set(self.original_prompt.keys()).union(set(self.ephemeral_prompt.keys()))  # 返回所有节点ID的集合
 
     def get_original_prompt(self):
-        return self.original_prompt
+        return self.original_prompt  # 返回原始prompt
 
 def get_input_info(
     class_def: Type[ComfyNodeABC],
@@ -98,8 +98,8 @@ class TopologicalSort:
     def __init__(self, dynprompt):
         self.dynprompt = dynprompt
         self.pendingNodes = {}
-        self.blockCount = {} # Number of nodes this node is directly blocked by
-        self.blocking = {} # Which nodes are blocked by this node
+        self.blockCount = {} # Number of nodes this node is directly blocked by；key是节点id，value是int对象，表示阻塞该节点的其他节点总数
+        self.blocking = {} # Which nodes are blocked by this node；key是节点id，value是一个字典，表示被该节点阻塞的所有节点
 
     def get_input_info(self, unique_id, input_name):
         class_type = self.dynprompt.get_node(unique_id)["class_type"]
@@ -117,14 +117,14 @@ class TopologicalSort:
         self.add_strong_link(from_node_id, from_socket, to_node_id)
 
     def add_strong_link(self, from_node_id, from_socket, to_node_id):
-        if not self.is_cached(from_node_id):
+        if not self.is_cached(from_node_id):  # from_node_id节点没有缓存
             self.add_node(from_node_id)
             if to_node_id not in self.blocking[from_node_id]:
                 self.blocking[from_node_id][to_node_id] = {}
                 self.blockCount[to_node_id] += 1
             self.blocking[from_node_id][to_node_id][from_socket] = True
 
-    def add_node(self, node_unique_id, include_lazy=False, subgraph_nodes=None):
+    def add_node(self, node_unique_id, include_lazy=False, subgraph_nodes=None):  # 从给定节点开始，向前遍历节点，统计工作流的一个可执行分支中的每个节点阻塞的具体节点和阻塞节点的数量
         node_ids = [node_unique_id]
         links = []
 
@@ -140,13 +140,13 @@ class TopologicalSort:
             inputs = self.dynprompt.get_node(unique_id)["inputs"]
             for input_name in inputs:
                 value = inputs[input_name]
-                if is_link(value):
+                if is_link(value):  # 如果value是link类型
                     from_node_id, from_socket = value
                     if subgraph_nodes is not None and from_node_id not in subgraph_nodes:
                         continue
                     _, _, input_info = self.get_input_info(unique_id, input_name)
-                    is_lazy = input_info is not None and "lazy" in input_info and input_info["lazy"]
-                    if (include_lazy or not is_lazy) and not self.is_cached(from_node_id):
+                    is_lazy = input_info is not None and "lazy" in input_info and input_info["lazy"]  # 判断当前输入是否为lazy
+                    if (include_lazy or not is_lazy) and not self.is_cached(from_node_id):  # 当from_node_id不在output缓存中才将其加到node_ids
                         node_ids.append(from_node_id)
                         links.append((from_node_id, from_socket, unique_id))
 
@@ -156,14 +156,14 @@ class TopologicalSort:
     def is_cached(self, node_id):
         return False
 
-    def get_ready_nodes(self):
+    def get_ready_nodes(self):  # 获取没有被其他节点阻塞的节点，对应就是准备好的节点
         return [node_id for node_id in self.pendingNodes if self.blockCount[node_id] == 0]
 
-    def pop_node(self, unique_id):
+    def pop_node(self, unique_id):  # 弹出处理完的节点
         del self.pendingNodes[unique_id]
-        for blocked_node_id in self.blocking[unique_id]:
-            self.blockCount[blocked_node_id] -= 1
-        del self.blocking[unique_id]
+        for blocked_node_id in self.blocking[unique_id]:  # 遍历被unique_id阻塞的所有节点
+            self.blockCount[blocked_node_id] -= 1  # 因为unique_id已经处理完，所以被unique_id阻塞的节点不再被阻塞，阻塞计数减1
+        del self.blocking[unique_id]  # 删除被unique_id阻塞的节点的记录信息
 
     def is_empty(self):
         return len(self.pendingNodes) == 0
@@ -176,7 +176,7 @@ class ExecutionList(TopologicalSort):
     def __init__(self, dynprompt, output_cache):
         super().__init__(dynprompt)
         self.output_cache = output_cache
-        self.staged_node_id = None
+        self.staged_node_id = None  # 表示工作流中正在执行的节点
 
     def is_cached(self, node_id):
         return self.output_cache.get(node_id) is not None
@@ -185,7 +185,7 @@ class ExecutionList(TopologicalSort):
         assert self.staged_node_id is None
         if self.is_empty():
             return None, None, None
-        available = self.get_ready_nodes()
+        available = self.get_ready_nodes()  # 获取所有已经准备好的节点
         if len(available) == 0:
             cycled_nodes = self.get_nodes_in_cycle()
             # Because cycles composed entirely of static nodes are caught during initial validation,
@@ -220,12 +220,12 @@ class ExecutionList(TopologicalSort):
             if hasattr(class_def, 'OUTPUT_NODE') and class_def.OUTPUT_NODE == True:
                 return True
             return False
-
+        # 如果输出节点可用，请首先执行它。从技术上讲，这对整体执行时间没有影响，但作为用户，能够尽快看到 PreviewImage 显示结果会感觉更好。这里还可以使用一些其他启发式方法来进一步改善用户体验。
         for node_id in node_list:
             if is_output(node_id):
                 return node_id
 
-        #This should handle the VAEDecode -> preview case
+        #This should handle the VAEDecode -> preview case；优先返回被阻塞的节点中存在输出节点的节点
         for node_id in node_list:
             for blocked_node_id in self.blocking[node_id]:
                 if is_output(blocked_node_id):
@@ -239,7 +239,7 @@ class ExecutionList(TopologicalSort):
                         return node_id
 
         #TODO: this function should be improved
-        return node_list[0]
+        return node_list[0]  # 如果以上条件都不满足，则返回node_list中的第一个节点
 
     def unstage_node_execution(self):
         assert self.staged_node_id is not None

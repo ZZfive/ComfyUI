@@ -1276,4 +1276,4 @@ def throw_exception_if_processing_interrupted():
     with interrupt_processing_mutex:
         if interrupt_processing:
             interrupt_processing = False
-            raise InterruptProcessingException()
+            raise InterruptProcessingException()  # 抛出中断异常

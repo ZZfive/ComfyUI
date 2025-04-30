@@ -1,15 +1,15 @@
 def is_link(obj):
-    if not isinstance(obj, list):
+    if not isinstance(obj, list):  # 必须时列表
         return False
-    if len(obj) != 2:
+    if len(obj) != 2:  # 长度必须为2
         return False
-    if not isinstance(obj[0], str):
+    if not isinstance(obj[0], str):  # 第一个元素字符串
         return False
-    if not isinstance(obj[1], int) and not isinstance(obj[1], float):
+    if not isinstance(obj[1], int) and not isinstance(obj[1], float):  # 第二个元素是整数或浮点数
         return False
     return True
 
-# The GraphBuilder is just a utility class that outputs graphs in the form expected by the ComfyUI back-end
+# The GraphBuilder is just a utility class that outputs graphs in the form expected by the ComfyUI back-end；以Comfyui后端预期的形式输出图形
 class GraphBuilder:
     _default_prefix_root = ""
     _default_prefix_call_index = 0

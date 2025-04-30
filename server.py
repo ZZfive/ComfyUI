@@ -627,32 +627,32 @@ class PromptServer():
         @routes.post("/prompt")
         async def post_prompt(request):  # 提交prompt接口
             logging.info("got prompt")
-            json_data =  await request.json()
+            json_data =  await request.json()  # 获取请求体中的JSON数据，其中会包含api形式的工作流json对象
             json_data = self.trigger_on_prompt(json_data)
 
             if "number" in json_data:
-                number = float(json_data['number'])
+                number = float(json_data['number'])  # 如果json_data中存在number，则使用json_data中的number
             else:
-                number = self.number
+                number = self.number  # 如果json_data中没有number，则使用self.number
                 if "front" in json_data:
-                    if json_data['front']:
-                        number = -number
+                    if json_data['front']:  # 如果json_data中存在front，并且为True，则将number设置为-number
+                        number = -number  # 取反后会在任务队列中有最高的优先级，最先被执行
 
-                self.number += 1
+                self.number += 1  # 任务数+1
 
             if "prompt" in json_data:
-                prompt = json_data["prompt"]
-                valid = execution.validate_prompt(prompt)
+                prompt = json_data["prompt"]  # 如果json_data中存在prompt，则使用json_data中的prompt
+                valid = execution.validate_prompt(prompt)  # 验证prompt是否有效
                 extra_data = {}
                 if "extra_data" in json_data:
                     extra_data = json_data["extra_data"]
 
                 if "client_id" in json_data:
                     extra_data["client_id"] = json_data["client_id"]
-                if valid[0]:
-                    prompt_id = str(uuid.uuid4())
-                    outputs_to_execute = valid[2]
-                    self.prompt_queue.put((number, prompt_id, prompt, extra_data, outputs_to_execute))
+                if valid[0]:  # 工作流校验成功
+                    prompt_id = str(uuid.uuid4())  # 生成当前工作流的唯一id
+                    outputs_to_execute = valid[2]  # 获取校验成功的输出类节点
+                    self.prompt_queue.put((number, prompt_id, prompt, extra_data, outputs_to_execute))  # 将校验成功的任务放入任务队列中
                     response = {"prompt_id": prompt_id, "number": number, "node_errors": valid[3]}
                     return web.json_response(response)
                 else:

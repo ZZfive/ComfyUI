@@ -9,11 +9,11 @@ from comfy_execution.graph_utils import is_link
 NODE_CLASS_CONTAINS_UNIQUE_ID: Dict[str, bool] = {}
 
 
-def include_unique_id_in_input(class_type: str) -> bool:
+def include_unique_id_in_input(class_type: str) -> bool:  # 判断节点类定义中的INPUT_TYPES是否包含UNIQUE_ID
     if class_type in NODE_CLASS_CONTAINS_UNIQUE_ID:
         return NODE_CLASS_CONTAINS_UNIQUE_ID[class_type]
     class_def = nodes.NODE_CLASS_MAPPINGS[class_type]
-    NODE_CLASS_CONTAINS_UNIQUE_ID[class_type] = "UNIQUE_ID" in class_def.INPUT_TYPES().get("hidden", {}).values()
+    NODE_CLASS_CONTAINS_UNIQUE_ID[class_type] = "UNIQUE_ID" in class_def.INPUT_TYPES().get("hidden", {}).values()  # 如果节点类定义中的INPUT_TYPES包含UNIQUE_ID，则返回True
     return NODE_CLASS_CONTAINS_UNIQUE_ID[class_type]
 
 class CacheKeySet:
@@ -43,92 +43,92 @@ class Unhashable:
     def __init__(self):
         self.value = float("NaN")
 
-def to_hashable(obj):
+def to_hashable(obj):  # 将任意python对象递归地转换为可哈希的形式
     # So that we don't infinitely recurse since frozenset and tuples
     # are Sequences.
     if isinstance(obj, (int, float, str, bool, type(None))):
         return obj
-    elif isinstance(obj, Mapping):
-        return frozenset([(to_hashable(k), to_hashable(v)) for k, v in sorted(obj.items())])
-    elif isinstance(obj, Sequence):
-        return frozenset(zip(itertools.count(), [to_hashable(i) for i in obj]))
+    elif isinstance(obj, Mapping):  # 如果obj是字典类型
+        return frozenset([(to_hashable(k), to_hashable(v)) for k, v in sorted(obj.items())])  # frozenset是一种不可变的、可哈希的集合类型
+    elif isinstance(obj, Sequence):  # 如果obj是列表、元组等序列类型
+        return frozenset(zip(itertools.count(), [to_hashable(i) for i in obj]))  # zip函数将两个可迭代对象合并成一个，itertools.count()生成一个无限递增的计数器
     else:
         # TODO - Support other objects like tensors?
         return Unhashable()
 
 class CacheKeySetID(CacheKeySet):
-    def __init__(self, dynprompt, node_ids, is_changed_cache):
+    def __init__(self, dynprompt: DynamicPrompt, node_ids, is_changed_cache):
         super().__init__(dynprompt, node_ids, is_changed_cache)
         self.dynprompt = dynprompt
         self.add_keys(node_ids)
 
     def add_keys(self, node_ids):
         for node_id in node_ids:
-            if node_id in self.keys:
+            if node_id in self.keys:  # 如果节点ID已经在keys中，则跳过
                 continue
-            if not self.dynprompt.has_node(node_id):
+            if not self.dynprompt.has_node(node_id):  # 如果节点ID不存在，则跳过
                 continue
-            node = self.dynprompt.get_node(node_id)
-            self.keys[node_id] = (node_id, node["class_type"])
-            self.subcache_keys[node_id] = (node_id, node["class_type"])
+            node = self.dynprompt.get_node(node_id)  # 获取节点信息
+            self.keys[node_id] = (node_id, node["class_type"])  # 将节点ID和节点类型作为键值对存储在keys中
+            self.subcache_keys[node_id] = (node_id, node["class_type"])  # 将节点ID和节点类型作为键值对存储在subcache_keys中
 
-class CacheKeySetInputSignature(CacheKeySet):
-    def __init__(self, dynprompt, node_ids, is_changed_cache):
-        super().__init__(dynprompt, node_ids, is_changed_cache)
+class CacheKeySetInputSignature(CacheKeySet):  # 创建基于节点输入结构和内容的缓存key
+    def __init__(self, dynprompt: DynamicPrompt, node_ids, is_changed_cache):
+        super().__init__(dynprompt, node_ids, is_changed_cache)  # 此处指定父类的初始化函数是为了将之前的缓存key全部清空
         self.dynprompt = dynprompt
         self.is_changed_cache = is_changed_cache
         self.add_keys(node_ids)
 
-    def include_node_id_in_input(self) -> bool:
-        return False
+    def include_node_id_in_input(self) -> bool:  # 决定生成缓存键时是否默认模板节点ID
+        return False  # 表示默认不考虑节点ID，只依赖于节点的输入内容；相同输入的节点可以共享缓存
 
-    def add_keys(self, node_ids):
+    def add_keys(self, node_ids):  # 为指定的节点生成并存储缓存键
         for node_id in node_ids:
-            if node_id in self.keys:
+            if node_id in self.keys:  # 如果当前节点ID已经在keys中，则跳过
                 continue
-            if not self.dynprompt.has_node(node_id):
+            if not self.dynprompt.has_node(node_id):  # 如果当前节点ID不存在，则跳过
                 continue
             node = self.dynprompt.get_node(node_id)
-            self.keys[node_id] = self.get_node_signature(self.dynprompt, node_id)
-            self.subcache_keys[node_id] = (node_id, node["class_type"])
+            self.keys[node_id] = self.get_node_signature(self.dynprompt, node_id)  # 为当前节点生成缓存键
+            self.subcache_keys[node_id] = (node_id, node["class_type"])  # 为当前节点的子缓存生成缓存键
 
     def get_node_signature(self, dynprompt, node_id):
         signature = []
-        ancestors, order_mapping = self.get_ordered_ancestry(dynprompt, node_id)
-        signature.append(self.get_immediate_node_signature(dynprompt, node_id, order_mapping))
-        for ancestor_id in ancestors:
+        ancestors, order_mapping = self.get_ordered_ancestry(dynprompt, node_id)  # 获取节点ID的所有祖先节点，并按照它们在节点输入中的顺序排列
+        signature.append(self.get_immediate_node_signature(dynprompt, node_id, order_mapping))  # 为当前节点生成缓存键
+        for ancestor_id in ancestors:  # 遍历当前节点的所有祖先节点，为每个祖先节点生成缓存键
             signature.append(self.get_immediate_node_signature(dynprompt, ancestor_id, order_mapping))
         return to_hashable(signature)
 
-    def get_immediate_node_signature(self, dynprompt, node_id, ancestor_order_mapping):
+    def get_immediate_node_signature(self, dynprompt, node_id, ancestor_order_mapping):  # 给单个节点生成缓存键
         if not dynprompt.has_node(node_id):
             # This node doesn't exist -- we can't cache it.
             return [float("NaN")]
         node = dynprompt.get_node(node_id)
-        class_type = node["class_type"]
-        class_def = nodes.NODE_CLASS_MAPPINGS[class_type]
-        signature = [class_type, self.is_changed_cache.get(node_id)]
-        if self.include_node_id_in_input() or (hasattr(class_def, "NOT_IDEMPOTENT") and class_def.NOT_IDEMPOTENT) or include_unique_id_in_input(class_type):
-            signature.append(node_id)
-        inputs = node["inputs"]
-        for key in sorted(inputs.keys()):
-            if is_link(inputs[key]):
-                (ancestor_id, ancestor_socket) = inputs[key]
-                ancestor_index = ancestor_order_mapping[ancestor_id]
-                signature.append((key,("ANCESTOR", ancestor_index, ancestor_socket)))
+        class_type = node["class_type"]  # 节点对应的类名
+        class_def = nodes.NODE_CLASS_MAPPINGS[class_type]  # 节点对应的类定义
+        signature = [class_type, self.is_changed_cache.get(node_id)]  # 缓存键的组成部分
+        if self.include_node_id_in_input() or (hasattr(class_def, "NOT_IDEMPOTENT") and class_def.NOT_IDEMPOTENT) or include_unique_id_in_input(class_type):  # 如果节点ID在缓存键中，或者节点类定义中包含NOT_IDEMPOTENT属性，或者节点类定义中包含UNIQUE_ID属性
+            signature.append(node_id)  # 将节点ID添加到缓存键中
+        inputs = node["inputs"]  # 获取节点的输入
+        for key in sorted(inputs.keys()):  # 对输入的键进行排序
+            if is_link(inputs[key]):  # 如果输入是链接，则将链接的祖先节点ID和祖先节点输出端口添加到缓存键中
+                (ancestor_id, ancestor_socket) = inputs[key]  # 获取链接的祖先节点ID和输入对应的祖先节点输出的端口
+                ancestor_index = ancestor_order_mapping[ancestor_id]  # 获取祖先节点在节点输入中的位置
+                signature.append((key,("ANCESTOR", ancestor_index, ancestor_socket)))  # 将祖先节点ID和祖先节点输入端口添加到缓存键中
             else:
-                signature.append((key, inputs[key]))
+                signature.append((key, inputs[key]))  # 将输入的键和输入的值添加到缓存键中
         return signature
 
     # This function returns a list of all ancestors of the given node. The order of the list is
     # deterministic based on which specific inputs the ancestor is connected by.
-    def get_ordered_ancestry(self, dynprompt, node_id):
+    def get_ordered_ancestry(self, dynprompt, node_id):  # 给定一个节点ID，返回该节点所有祖先节点的列表，并按照它们在节点输入中的顺序排列
         ancestors = []
         order_mapping = {}
         self.get_ordered_ancestry_internal(dynprompt, node_id, ancestors, order_mapping)
         return ancestors, order_mapping
 
-    def get_ordered_ancestry_internal(self, dynprompt, node_id, ancestors, order_mapping):
+    def get_ordered_ancestry_internal(self, dynprompt, node_id, ancestors, order_mapping):  # 递归地获取所有祖先节点，并按照它们在节点输入中的顺序排列
         if not dynprompt.has_node(node_id):
             return
         inputs = dynprompt.get_node(node_id)["inputs"]
@@ -136,14 +136,14 @@ class CacheKeySetInputSignature(CacheKeySet):
         for key in input_keys:
             if is_link(inputs[key]):
                 ancestor_id = inputs[key][0]
-                if ancestor_id not in order_mapping:
-                    ancestors.append(ancestor_id)
-                    order_mapping[ancestor_id] = len(ancestors) - 1
-                    self.get_ordered_ancestry_internal(dynprompt, ancestor_id, ancestors, order_mapping)
+                if ancestor_id not in order_mapping:  # 如果祖先节点ID不在order_mapping中，则将其添加到ancestors列表中，并记录其在列表中的位置
+                    ancestors.append(ancestor_id)  # 将祖先节点ID添加到ancestors列表中
+                    order_mapping[ancestor_id] = len(ancestors) - 1  # 记录祖先节点ID在列表中的位置
+                    self.get_ordered_ancestry_internal(dynprompt, ancestor_id, ancestors, order_mapping)  # 递归地获取祖先节点的所有祖先节点
 
 class BasicCache:
     def __init__(self, key_class):
-        self.key_class = key_class
+        self.key_class = key_class  # 具体使用的缓存key的类
         self.initialized = False
         self.dynprompt: DynamicPrompt
         self.cache_key_set: CacheKeySet
@@ -151,29 +151,29 @@ class BasicCache:
         self.subcaches = {}
 
     def set_prompt(self, dynprompt, node_ids, is_changed_cache):
-        self.dynprompt = dynprompt
-        self.cache_key_set = self.key_class(dynprompt, node_ids, is_changed_cache)
+        self.dynprompt = dynprompt  # 更新换成你中的动态prompt
+        self.cache_key_set = self.key_class(dynprompt, node_ids, is_changed_cache)  # 会给工作流prompt中的所有节点生成缓存key
         self.is_changed_cache = is_changed_cache
         self.initialized = True
 
     def all_node_ids(self):
         assert self.initialized
         node_ids = self.cache_key_set.all_node_ids()
-        for subcache in self.subcaches.values():
+        for subcache in self.subcaches.values():  # 遍历所有子缓存中的值
             node_ids = node_ids.union(subcache.all_node_ids())
         return node_ids
 
     def _clean_cache(self):
-        preserve_keys = set(self.cache_key_set.get_used_keys())
+        preserve_keys = set(self.cache_key_set.get_used_keys())  # 获取工作流更新后的缓存key，是需要保留的
         to_remove = []
-        for key in self.cache:
-            if key not in preserve_keys:
+        for key in self.cache:  # 遍历原始缓存中的所有缓存key
+            if key not in preserve_keys:  # 如果缓存key不在需要保留的缓存key中，则删除
                 to_remove.append(key)
         for key in to_remove:
             del self.cache[key]
 
     def _clean_subcaches(self):
-        preserve_subcaches = set(self.cache_key_set.get_used_subcache_keys())
+        preserve_subcaches = set(self.cache_key_set.get_used_subcache_keys())  # 获取工作流更新后的缓存key，是需要保留的
 
         to_remove = []
         for key in self.subcaches:
@@ -190,13 +190,13 @@ class BasicCache:
     def _set_immediate(self, node_id, value):
         assert self.initialized
         cache_key = self.cache_key_set.get_data_key(node_id)
-        self.cache[cache_key] = value
+        self.cache[cache_key] = value  # 将给定节点的缓存值设置为value
 
     def _get_immediate(self, node_id):
-        if not self.initialized:
-            return None
-        cache_key = self.cache_key_set.get_data_key(node_id)
-        if cache_key in self.cache:
+        if not self.initialized:  # 如果缓存未初始化
+            return None  # 返回None
+        cache_key = self.cache_key_set.get_data_key(node_id)  # 获取给定节点的缓存key
+        if cache_key in self.cache:  # 如果缓存key在缓存中
             return self.cache[cache_key]
         else:
             return None
@@ -210,13 +210,13 @@ class BasicCache:
         subcache.set_prompt(self.dynprompt, children_ids, self.is_changed_cache)
         return subcache
 
-    def _get_subcache(self, node_id):
+    def _get_subcache(self, node_id):  # 获取给定节点的子缓存
         assert self.initialized
-        subcache_key = self.cache_key_set.get_subcache_key(node_id)
-        if subcache_key in self.subcaches:
-            return self.subcaches[subcache_key]
+        subcache_key = self.cache_key_set.get_subcache_key(node_id)  # 获取给定节点的子缓存key
+        if subcache_key in self.subcaches:  # 如果子缓存key在子缓存中
+            return self.subcaches[subcache_key]  # 返回子缓存
         else:
-            return None
+            return None  # 如果子缓存key不在子缓存中，则返回None
 
     def recursive_debug_dump(self):
         result = []
@@ -230,29 +230,29 @@ class HierarchicalCache(BasicCache):
     def __init__(self, key_class):
         super().__init__(key_class)
 
-    def _get_cache_for(self, node_id):
+    def _get_cache_for(self, node_id):  # 递归向前查找给定节点的缓存
         assert self.dynprompt is not None
         parent_id = self.dynprompt.get_parent_node_id(node_id)
-        if parent_id is None:
+        if parent_id is None:  # 如果给定节点没有父节点
             return self
 
         hierarchy = []
-        while parent_id is not None:
+        while parent_id is not None:  # 一直向前找父节点
             hierarchy.append(parent_id)
             parent_id = self.dynprompt.get_parent_node_id(parent_id)
 
         cache = self
-        for parent_id in reversed(hierarchy):
-            cache = cache._get_subcache(parent_id)
+        for parent_id in reversed(hierarchy):  # 将最早的父节点向后遍历
+            cache = cache._get_subcache(parent_id)  # 获取给定节点的子缓存
             if cache is None:
-                return None
-        return cache
+                return None  # 如果子缓存为空，则返回None
+        return cache  # 返回给定节点的缓存
 
     def get(self, node_id):
-        cache = self._get_cache_for(node_id)
+        cache = self._get_cache_for(node_id)  # 获取给定节点的缓存
         if cache is None:
-            return None
-        return cache._get_immediate(node_id)
+            return None  # 如果缓存为空，则返回None
+        return cache._get_immediate(node_id)  # 返回给定节点当前的缓存值
 
     def set(self, node_id, value):
         cache = self._get_cache_for(node_id)

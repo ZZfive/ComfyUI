@@ -164,30 +164,30 @@ def prompt_worker(q, server_instance):
         cache_type = execution.CacheType.DEPENDENCY_AWARE
 
     e = execution.PromptExecutor(server_instance, cache_type=cache_type, cache_size=args.cache_lru)
-    last_gc_collect = 0
-    need_gc = False
-    gc_collect_interval = 10.0
+    last_gc_collect = 0  # 上次垃圾回收时间
+    need_gc = False  # 是否需要垃圾回收
+    gc_collect_interval = 10.0  # 垃圾回收间隔
 
     while True:
         timeout = 1000.0
         if need_gc:
-            timeout = max(gc_collect_interval - (current_time - last_gc_collect), 0.0)
+            timeout = max(gc_collect_interval - (current_time - last_gc_collect), 0.0)  # 如果需要垃圾回收，则将timeout设置为当前时间减去上次垃圾回收时间，如果不需要垃圾回收，则timeout为0
 
-        queue_item = q.get(timeout=timeout)
-        if queue_item is not None:
-            item, item_id = queue_item
-            execution_start_time = time.perf_counter()
-            prompt_id = item[1]
-            server_instance.last_prompt_id = prompt_id
+        queue_item = q.get(timeout=timeout)  # 从任务队列中获取任务
+        if queue_item is not None:  # 如果获取到任务
+            item, item_id = queue_item  # 解包任务
+            execution_start_time = time.perf_counter()  # 记录开始时间
+            prompt_id = item[1]  # 获取prompt_id；item的格式为(number, prompt_id, prompt, extra_data, outputs_to_execute)
+            server_instance.last_prompt_id = prompt_id  # 更新last_prompt_id
 
-            e.execute(item[2], prompt_id, item[3], item[4])
+            e.execute(item[2], prompt_id, item[3], item[4])  # 执行任务
             need_gc = True
             q.task_done(item_id,
                         e.history_result,
                         status=execution.PromptQueue.ExecutionStatus(
                             status_str='success' if e.success else 'error',
                             completed=e.success,
-                            messages=e.status_messages))
+                            messages=e.status_messages))  # 更新处理完的任务状态，记录到历史队列中
             if server_instance.client_id is not None:
                 server_instance.send_sync("executing", {"node": None, "prompt_id": prompt_id}, server_instance.client_id)
 
@@ -210,7 +210,7 @@ def prompt_worker(q, server_instance):
 
         if need_gc:
             current_time = time.perf_counter()
-            if (current_time - last_gc_collect) > gc_collect_interval:
+            if (current_time - last_gc_collect) > gc_collect_interval:  # 如果当前时间减去上次垃圾回收时间大于垃圾回收间隔，则进行垃圾回收
                 gc.collect()
                 comfy.model_management.soft_empty_cache()
                 last_gc_collect = current_time
