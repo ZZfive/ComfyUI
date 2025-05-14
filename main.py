@@ -13,7 +13,7 @@ import logging
 import sys
 
 if __name__ == "__main__":
-    #NOTE: These do not do anything on core ComfyUI which should already have no communication with the internet, they are for custom nodes.
+    #NOTE: These do not do anything on core ComfyUI, they are for custom nodes.
     os.environ['HF_HUB_DISABLE_TELEMETRY'] = '1'  # 禁用 Hugging Face Hub 的遥测数据收集
     os.environ['DO_NOT_TRACK'] = '1'  # 一个常用的环境变量，许多开源库和工具会检查此变量，以确定是否收集用户数据
 
@@ -141,7 +141,7 @@ import nodes
 import comfy.model_management
 import comfyui_version
 import app.logger
-
+import hook_breaker_ac10a0
 
 def cuda_malloc_warning():
     device = comfy.model_management.get_torch_device()
@@ -215,6 +215,7 @@ def prompt_worker(q, server_instance):
                 comfy.model_management.soft_empty_cache()
                 last_gc_collect = current_time
                 need_gc = False
+                hook_breaker_ac10a0.restore_functions()
 
 
 async def run(server_instance, address='', port=8188, verbose=True, call_on_start=None):
@@ -268,7 +269,9 @@ def start_comfyui(asyncio_loop=None):
     prompt_server = server.PromptServer(asyncio_loop)  # 创建PromptServer实例，处理HTTP请求的服务器
     q = execution.PromptQueue(prompt_server)  # 创建PromptQueue实例，任务队列管理器
 
-    nodes.init_extra_nodes(init_custom_nodes=not args.disable_all_custom_nodes)  # 动态加载自定义节点
+    hook_breaker_ac10a0.save_functions()
+    nodes.init_extra_nodes(init_custom_nodes=not args.disable_all_custom_nodes, init_api_nodes=not args.disable_api_nodes)  # 动态加载自定义节点
+    hook_breaker_ac10a0.restore_functions()
 
     cuda_malloc_warning()  # 检查目前使用的显卡是否支持cuda-malloc
 
