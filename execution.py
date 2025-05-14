@@ -305,7 +305,7 @@ def execute(server, dynprompt, caches, current_item, extra_data, executed, promp
             output_ui = []
             has_subgraph = False
         else:
-            input_data_all, missing_keys = get_input_data(inputs, class_def, unique_id, caches.outputs, dynprompt, extra_data)  # 将从工作流中提取的节点输入与其定义中要求的输入对比，检测输入是否正常
+            input_data_all, missing_keys = get_input_data(inputs, class_def, unique_id, caches.outputs, dynprompt, extra_data)  # 构建最终执行的完整输入，同时会从工作流中提取的节点输入与其定义中要求的输入对比，检测输入是否正常
             if server.client_id is not None:
                 server.last_node_id = display_node_id
                 server.send_sync("executing", { "node": unique_id, "display_node": display_node_id, "prompt_id": prompt_id }, server.client_id)
@@ -513,7 +513,7 @@ class PromptExecutor:
                           broadcast=False)  # 发送当前工作流中可以复用的缓存节点
             pending_subgraph_results = {}
             executed = set()
-            execution_list = ExecutionList(dynamic_prompt, self.caches.outputs)
+            execution_list = ExecutionList(dynamic_prompt, self.caches.outputs)  # 构建包含拓扑图关系的执行列表，只会对需要重新执行的节点进行处理；此处outputs缓存已经是更新后的，删除了无用的缓存
             current_outputs = self.caches.outputs.all_node_ids()  # 获取当前工作流的所有节点id
             for node_id in list(execute_outputs):  # 此处的execute_outputs中是任务提交前工作流校验后的输出类节点列表
                 execution_list.add_node(node_id)  # 会从输出类节点开始，向前遍历节点，统计工作流的一个可执行分支中的每个节点阻塞的具体节点和阻塞节点的数量；只针对需要重新执行的节点

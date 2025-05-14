@@ -97,7 +97,7 @@ def get_input_info(
 class TopologicalSort:
     def __init__(self, dynprompt):
         self.dynprompt = dynprompt
-        self.pendingNodes = {}
+        self.pendingNodes = {}  # 存储需要执行的节点，key是节点id，value是布尔值
         self.blockCount = {} # Number of nodes this node is directly blocked by；key是节点id，value是int对象，表示阻塞该节点的其他节点总数
         self.blocking = {} # Which nodes are blocked by this node；key是节点id，value是一个字典，表示被该节点阻塞的所有节点
 
@@ -116,13 +116,13 @@ class TopologicalSort:
         from_node_id, from_socket = value
         self.add_strong_link(from_node_id, from_socket, to_node_id)
 
-    def add_strong_link(self, from_node_id, from_socket, to_node_id):
+    def add_strong_link(self, from_node_id, from_socket, to_node_id):  # 建立节点之间的强连接，from_node_id节点必须在to_node_id节点之前执行
         if not self.is_cached(from_node_id):  # from_node_id节点没有缓存
-            self.add_node(from_node_id)
+            self.add_node(from_node_id)  # 当前的link中，from_node_id就是一个还没执行的节点，需要向前构建拓扑执行关系，与最初从外部将输出类节点id传入add_node中一样
             if to_node_id not in self.blocking[from_node_id]:
-                self.blocking[from_node_id][to_node_id] = {}
-                self.blockCount[to_node_id] += 1
-            self.blocking[from_node_id][to_node_id][from_socket] = True
+                self.blocking[from_node_id][to_node_id] = {}  # 初始化阻塞关系，from_node_id节点阻塞to_node_id节点
+                self.blockCount[to_node_id] += 1  # 阻塞计数加1，表示to_node_id节点被阻塞的次数
+            self.blocking[from_node_id][to_node_id][from_socket] = True  # 记录from_node_id节点阻塞to_node_id节点的具体socket
 
     def add_node(self, node_unique_id, include_lazy=False, subgraph_nodes=None):  # 从给定节点开始，向前遍历节点，统计工作流的一个可执行分支中的每个节点阻塞的具体节点和阻塞节点的数量
         node_ids = [node_unique_id]
@@ -137,16 +137,16 @@ class TopologicalSort:
             self.blockCount[unique_id] = 0
             self.blocking[unique_id] = {}
 
-            inputs = self.dynprompt.get_node(unique_id)["inputs"]
+            inputs = self.dynprompt.get_node(unique_id)["inputs"]  # 从工作流中获取当前节点的输入
             for input_name in inputs:
                 value = inputs[input_name]
                 if is_link(value):  # 如果value是link类型
-                    from_node_id, from_socket = value
+                    from_node_id, from_socket = value  # from_node_id表示当前节点来源于节点的id，from_socket表示具体是来源节点中的哪个输出
                     if subgraph_nodes is not None and from_node_id not in subgraph_nodes:
                         continue
-                    _, _, input_info = self.get_input_info(unique_id, input_name)
+                    _, _, input_info = self.get_input_info(unique_id, input_name)  # 获取当前节点的输入信息
                     is_lazy = input_info is not None and "lazy" in input_info and input_info["lazy"]  # 判断当前输入是否为lazy
-                    if (include_lazy or not is_lazy) and not self.is_cached(from_node_id):  # 当from_node_id不在output缓存中才将其加到node_ids
+                    if (include_lazy or not is_lazy) and not self.is_cached(from_node_id):  # 当from_node_id节点不在output缓存中才将其加到node_ids
                         node_ids.append(from_node_id)
                         links.append((from_node_id, from_socket, unique_id))
 
@@ -156,7 +156,7 @@ class TopologicalSort:
     def is_cached(self, node_id):
         return False
 
-    def get_ready_nodes(self):  # 获取没有被其他节点阻塞的节点，对应就是准备好的节点
+    def get_ready_nodes(self):  # 获取没有被其他节点阻塞的节点，即不被其他节点阻塞的节点
         return [node_id for node_id in self.pendingNodes if self.blockCount[node_id] == 0]
 
     def pop_node(self, unique_id):  # 弹出处理完的节点
@@ -181,15 +181,15 @@ class ExecutionList(TopologicalSort):
     def is_cached(self, node_id):
         return self.output_cache.get(node_id) is not None
 
-    def stage_node_execution(self):
+    def stage_node_execution(self):  # 逐步采样每次需要执行的节点
         assert self.staged_node_id is None
         if self.is_empty():
             return None, None, None
         available = self.get_ready_nodes()  # 获取所有已经准备好的节点
-        if len(available) == 0:
-            cycled_nodes = self.get_nodes_in_cycle()
-            # Because cycles composed entirely of static nodes are caught during initial validation,
-            # we will 'blame' the first node in the cycle that is not a static node.
+        if len(available) == 0:  # 没有节点不被阻塞，即所有节点都被阻塞，表示工作流中存在环，处理循环依赖问题
+            cycled_nodes = self.get_nodes_in_cycle()  #  找出整个环中的所有节点
+            # Because cycles composed entirely of static nodes are caught during initial validation,  因为工作流中静态节点组成的环在初始校验时被捕获，
+            # we will 'blame' the first node in the cycle that is not a static node.  将环中第一个不是静态节点的节点作为错误节点
             blamed_node = cycled_nodes[0]
             for node_id in cycled_nodes:
                 display_node_id = self.dynprompt.get_display_node_id(node_id)
@@ -209,7 +209,7 @@ class ExecutionList(TopologicalSort):
         self.staged_node_id = self.ux_friendly_pick_node(available)
         return self.staged_node_id, None, None
 
-    def ux_friendly_pick_node(self, node_list):
+    def ux_friendly_pick_node(self, node_list):  # 尽量选择可以让用户更早看到视觉结果的节点，提升交互体验
         # If an output node is available, do that first.
         # Technically this has no effect on the overall length of execution, but it feels better as a user
         # for a PreviewImage to display a result as soon as it can
@@ -250,7 +250,7 @@ class ExecutionList(TopologicalSort):
         self.pop_node(node_id)
         self.staged_node_id = None
 
-    def get_nodes_in_cycle(self):
+    def get_nodes_in_cycle(self):  # 通过反向拓扑排序，找出环中的所有节点
         # We'll dissolve the graph in reverse topological order to leave only the nodes in the cycle.
         # We're skipping some of the performance optimizations from the original TopologicalSort to keep
         # the code simple (and because having a cycle in the first place is a catastrophic error)

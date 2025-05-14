@@ -86,9 +86,9 @@ class CacheKeySetInputSignature(CacheKeySet):  # 创建基于节点输入结构�
         for node_id in node_ids:
             if node_id in self.keys:  # 如果当前节点ID已经在keys中，则跳过
                 continue
-            if not self.dynprompt.has_node(node_id):  # 如果当前节点ID不存在，则跳过
+            if not self.dynprompt.has_node(node_id):  # 如果当前节点ID工作流中不存在，则跳过
                 continue
-            node = self.dynprompt.get_node(node_id)
+            node = self.dynprompt.get_node(node_id)  # 基于节点ID获取工作流中对应的节点信息
             self.keys[node_id] = self.get_node_signature(self.dynprompt, node_id)  # 为当前节点生成缓存键
             self.subcache_keys[node_id] = (node_id, node["class_type"])  # 为当前节点的子缓存生成缓存键
 
@@ -152,7 +152,7 @@ class BasicCache:
 
     def set_prompt(self, dynprompt, node_ids, is_changed_cache):
         self.dynprompt = dynprompt  # 更新换成你中的动态prompt
-        self.cache_key_set = self.key_class(dynprompt, node_ids, is_changed_cache)  # 会给工作流prompt中的所有节点生成缓存key
+        self.cache_key_set = self.key_class(dynprompt, node_ids, is_changed_cache)  # 会给工作流prompt中的所有节点生成缓存key，返回的是保存缓存key的实际对象
         self.is_changed_cache = is_changed_cache
         self.initialized = True
 
@@ -169,7 +169,7 @@ class BasicCache:
         for key in self.cache:  # 遍历原始缓存中的所有缓存key
             if key not in preserve_keys:  # 如果缓存key不在需要保留的缓存key中，则删除
                 to_remove.append(key)
-        for key in to_remove:
+        for key in to_remove:  # 也会将不能重复的节点对应的缓存删除，即使该节点在更新后的工作流中仍然存在，但其需要重新执行
             del self.cache[key]
 
     def _clean_subcaches(self):
