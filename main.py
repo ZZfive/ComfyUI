@@ -230,7 +230,7 @@ async def run(server_instance, address='', port=8188, verbose=True, call_on_star
 def hijack_progress(server_instance):
     def hook(value, total, preview_image):
         comfy.model_management.throw_exception_if_processing_interrupted()  # 采样过程若中断会排除异常
-        progress = {"value": value, "max": total, "prompt_id": server_instance.last_prompt_id, "node": server_instance.last_node_id}  
+        progress = {"value": value, "max": total, "prompt_id": server_instance.last_prompt_id, "node": server_instance.last_node_id}
 
         server_instance.send_sync("progress", progress, server_instance.client_id)  # 将信息信息发送给客户端，其可以更新进度
         if preview_image is not None:

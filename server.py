@@ -185,7 +185,7 @@ class PromptServer():
         routes = web.RouteTableDef()  # 初始化路由
         self.routes = routes
         self.last_node_id = None  # 用于记录当前处理任务执行节点信息
-        self.client_id = None  # 用于记录当前处理任务对应的客户端ID 
+        self.client_id = None  # 用于记录当前处理任务对应的客户端ID
 
         self.on_prompt_handlers = []  # 用于存储on_prompt事件的回调函数
 
