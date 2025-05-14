@@ -496,7 +496,7 @@ class PromptExecutor:
         with torch.inference_mode():
             dynamic_prompt = DynamicPrompt(prompt)
             is_changed_cache = IsChangedCache(dynamic_prompt, self.caches.outputs)
-            for cache in self.caches.all:  # 遍历所有缓存，更新缓存
+            for cache in self.caches.all:  # 遍历所有缓存，更新缓存；顺序是outputs -> ui -> objects
                 cache.set_prompt(dynamic_prompt, prompt.keys(), is_changed_cache)  # 设置缓存；主要是给各个节点更新缓存key
                 cache.clean_unused()  # 清理未使用的缓存key及对应的缓存值
 
@@ -514,7 +514,7 @@ class PromptExecutor:
             execution_list = ExecutionList(dynamic_prompt, self.caches.outputs)
             current_outputs = self.caches.outputs.all_node_ids()  # 获取当前工作流的所有节点id
             for node_id in list(execute_outputs):  # 此处的execute_outputs中是任务提交前工作流校验后的输出类节点列表
-                execution_list.add_node(node_id)  # 会从输出类节点开始，向前遍历节点，会统计工作流的一个可执行分支中的每个节点阻塞的具体节点和阻塞节点的数量；只针对需要重新执行的节点
+                execution_list.add_node(node_id)  # 会从输出类节点开始，向前遍历节点，统计工作流的一个可执行分支中的每个节点阻塞的具体节点和阻塞节点的数量；只针对需要重新执行的节点
 
             while not execution_list.is_empty():  # 如果执行列表不为空，则继续执行
                 node_id, error, ex = execution_list.stage_node_execution()  # 从执行列表中获取一个节点，作为执行的初始节点
