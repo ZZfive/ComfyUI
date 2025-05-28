@@ -209,11 +209,11 @@ class PromptServer():
                 if self.client_id == sid and self.last_node_id is not None:  # 如果当前客户端的请求正在处理时，将处理的节点信息返回给客户端
                     await self.send("executing", { "node": self.last_node_id }, sid)  # 给客户端发送中间状态信息
 
-                async for msg in ws:
-                    if msg.type == aiohttp.WSMsgType.ERROR:
+                async for msg in ws:  # 使用异步迭代器，无限循环，持续接收客户消息；因为异步编程，不会阻塞主线程，也可处理多个websocket连接
+                    if msg.type == aiohttp.WSMsgType.ERROR:  # 如果消息类型为错误，则记录日志；客户端主动关闭连接、连接异常、抛出异常
                         logging.warning('ws connection closed with exception %s' % ws.exception())
             finally:
-                self.sockets.pop(sid, None)  # 移除客户端ID
+                self.sockets.pop(sid, None)  # 当ws连接异常时会触发finally，移除客户端ID
             return ws
 
         @routes.get("/")

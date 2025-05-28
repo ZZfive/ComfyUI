@@ -3,10 +3,10 @@ from typing import Callable, Protocol, TypedDict, Optional, List
 from .node_typing import IO, InputTypeDict, ComfyNodeABC, CheckLazyMixin, FileLocator
 
 
-class UnetApplyFunction(Protocol):
+class UnetApplyFunction(Protocol):  # 定义unet apply函数的一个签名类
     """Function signature protocol on comfy.model_base.BaseModel.apply_model"""
 
-    def __call__(self, x: torch.Tensor, t: torch.Tensor, **kwargs) -> torch.Tensor:
+    def __call__(self, x: torch.Tensor, t: torch.Tensor, **kwargs) -> torch.Tensor:  # 这个签名类定义了unet apply函数接受的参数和返回值
         pass
 
 
@@ -30,7 +30,7 @@ class UnetParams(TypedDict):
     cond_or_uncond: List[int]
 
 
-UnetWrapperFunction = Callable[[UnetApplyFunction, UnetParams], torch.Tensor]
+UnetWrapperFunction = Callable[[UnetApplyFunction, UnetParams], torch.Tensor]  # 定义可执行的unet wrapper函数类型；表示函数接受两个参数，第一个参数是UnetApplyFunction类型，第二个参数是UnetParams类型，返回一个torch.Tensor类型
 
 
 __all__ = [

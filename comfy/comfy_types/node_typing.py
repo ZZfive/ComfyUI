@@ -14,7 +14,7 @@ class StrEnum(str, Enum):
         return self.value
 
 
-class IO(StrEnum):
+class IO(StrEnum):  # IO类型枚举类，定义了comfyui内部支持的原生数据类型
     """Node input/output data types.
 
     Includes functionality for ``"*"`` (`ANY`) and ``"MULTI,TYPES"``.
@@ -50,17 +50,17 @@ class IO(StrEnum):
     SEGS = "SEGS"
     VIDEO = "VIDEO"
 
-    ANY = "*"
+    ANY = "*"  # 通配符，匹配任何类型，但代价较高
     """Always matches any type, but at a price.
 
     Causes some functionality issues (e.g. reroutes, link types), and should be avoided whenever possible.
     """
-    NUMBER = "FLOAT,INT"
+    NUMBER = "FLOAT,INT"  # 表示一个浮点数或整数的复合类型
     """A float or an int - could be either"""
-    PRIMITIVE = "STRING,FLOAT,INT,BOOLEAN"
+    PRIMITIVE = "STRING,FLOAT,INT,BOOLEAN"  # 表示一个字符串、浮点数、整数或布尔值的复合类型
     """Could be any of: string, float, int, or bool"""
 
-    def __ne__(self, value: object) -> bool:
+    def __ne__(self, value: object) -> bool:  # 重载!=运算符
         if self == "*" or value == "*":
             return False
         if not isinstance(value, str):
@@ -208,14 +208,14 @@ class InputTypeDict(TypedDict):
     """
 
 
-class ComfyNodeABC(ABC):
+class ComfyNodeABC(ABC):  # 抽象基类，定义了Comfy节点必须具有的属性和方法
     """Abstract base class for Comfy nodes.  Includes the names and expected types of attributes.
 
     Comfy Docs: https://docs.comfy.org/custom-nodes/backend/server_overview
     """
 
     DESCRIPTION: str
-    """Node description, shown as a tooltip when hovering over the node.
+    """Node description, shown as a tooltip when hovering over the node.  节点描述，在悬停时显示
 
     Usage::
 
@@ -226,19 +226,19 @@ class ComfyNodeABC(ABC):
         DESCRIPTION = cleandoc(__doc__)
     """
     CATEGORY: str
-    """The category of the node, as per the "Add Node" menu.
+    """The category of the node, as per the "Add Node" menu.  节点类别，在"添加节点"菜单中使用
 
     Comfy Docs: https://docs.comfy.org/custom-nodes/backend/server_overview#category
     """
-    EXPERIMENTAL: bool
+    EXPERIMENTAL: bool  # 标记节点为实验性
     """Flags a node as experimental, informing users that it may change or not work as expected."""
-    DEPRECATED: bool
+    DEPRECATED: bool  # 标记节点为已弃用
     """Flags a node as deprecated, indicating to users that they should find alternatives to this node."""
-    API_NODE: Optional[bool]
+    API_NODE: Optional[bool]  # 标记节点为API节点
     """Flags a node as an API node."""
 
     @classmethod
-    @abstractmethod
+    @abstractmethod  # 抽象方法，必须由子类实现
     def INPUT_TYPES(s) -> InputTypeDict:
         """Defines node inputs.
 
@@ -250,7 +250,7 @@ class ComfyNodeABC(ABC):
         """
         return {"required": {}}
 
-    OUTPUT_NODE: bool
+    OUTPUT_NODE: bool  # 标记节点为输出节点
     """Flags this node as an output node, causing any inputs it requires to be executed.
 
     If a node is not connected to any output nodes, that node will not be executed.  Usage::
@@ -293,7 +293,7 @@ class ComfyNodeABC(ABC):
     Comfy Docs: https://docs.comfy.org/custom-nodes/backend/lists#list-processing
     """
 
-    RETURN_TYPES: tuple[IO, ...]
+    RETURN_TYPES: tuple[IO, ...]  # 表示节点的输出类型
     """A tuple representing the outputs of this node.
 
     Usage::
@@ -307,16 +307,16 @@ class ComfyNodeABC(ABC):
 
     Comfy Docs: https://docs.comfy.org/custom-nodes/backend/server_overview#return-names
     """
-    OUTPUT_TOOLTIPS: tuple[str, ...]
+    OUTPUT_TOOLTIPS: tuple[str, ...]  # 输出提示
     """A tuple of strings to use as tooltips for node outputs, one for each item in `RETURN_TYPES`."""
-    FUNCTION: str
+    FUNCTION: str   # 要执行的函数名
     """The name of the function to execute as a literal string, e.g. `FUNCTION = "execute"`
 
     Comfy Docs: https://docs.comfy.org/custom-nodes/backend/server_overview#function
     """
 
 
-class CheckLazyMixin:
+class CheckLazyMixin:  # 为节点提供了惰性求值的支持，允许节点按需请求输入的评估，而不是一次性评估所有输入，有助于提高性能并避免不必要的计算
     """Provides a basic check_lazy_status implementation and type hinting for nodes that use lazy inputs."""
 
     def check_lazy_status(self, **kwargs) -> list[str]:
@@ -337,7 +337,7 @@ class CheckLazyMixin:
         return need
 
 
-class FileLocator(TypedDict):
+class FileLocator(TypedDict):  # 提供文件位置的类型提示
     """Provides type hinting for the file location"""
 
     filename: str
