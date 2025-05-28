@@ -29,6 +29,7 @@ import comfy.model_management
 import node_helpers
 from comfyui_version import __version__
 from app.frontend_management import FrontendManager
+
 from app.user_manager import UserManager
 from app.model_manager import ModelFileManager
 from app.custom_node_manager import CustomNodeManager
@@ -158,7 +159,7 @@ class PromptServer():
         self.custom_node_manager = CustomNodeManager()  # 自定义节点管理
         self.internal_routes = InternalRoutes(self)  # 内部路由
         self.supports = ["custom_nodes_from_web"]
-        self.prompt_queue = None
+        self.prompt_queue = execution.PromptQueue(self)
         self.loop = loop
         self.messages = asyncio.Queue()  # 从任务执行端获取信息，再将信息发送出去
         self.client_session:Optional[aiohttp.ClientSession] = None
@@ -225,7 +226,7 @@ class PromptServer():
             return response
 
         @routes.get("/embeddings")
-        def get_embeddings(self):  # embedding文件查询接口
+        def get_embeddings(request):  # embedding文件查询接口
             embeddings = folder_paths.get_filename_list("embeddings")
             return web.json_response(list(map(lambda a: os.path.splitext(a)[0], embeddings)))
 
@@ -281,7 +282,6 @@ class PromptServer():
                     a.update(f.read())  # 读取从filepath路径读取的文件内容，并更新到a中
                     b.update(image.file.read())  # 读取从image.file路径读取的文件内容，并更新到b中
                     image.file.seek(0)
-                    f.close()
                 return a.hexdigest() == b.hexdigest()  # 比较两个哈希值是否相等
             return False
 
@@ -620,7 +620,7 @@ class PromptServer():
         @routes.get("/queue")
         async def get_queue(request):  # 获取当前队列信息接口
             queue_info = {}
-            current_queue = self.prompt_queue.get_current_queue()
+            current_queue = self.prompt_queue.get_current_queue_volatile()
             queue_info['queue_running'] = current_queue[0]
             queue_info['queue_pending'] = current_queue[1]
             return web.json_response(queue_info)

@@ -361,6 +361,8 @@ def detect_unet_config(state_dict, key_prefix, metadata=None):
             dit_config["model_type"] = "vace"
             dit_config["vace_in_dim"] = state_dict['{}vace_patch_embedding.weight'.format(key_prefix)].shape[1]
             dit_config["vace_layers"] = count_blocks(state_dict_keys, '{}vace_blocks.'.format(key_prefix) + '{}.')
+        elif '{}control_adapter.conv.weight'.format(key_prefix) in state_dict_keys:
+            dit_config["model_type"] = "camera"
         else:
             if '{}img_emb.proj.0.bias'.format(key_prefix) in state_dict_keys:
                 dit_config["model_type"] = "i2v"
@@ -618,6 +620,9 @@ def convert_config(unet_config):
 
 
 def unet_config_from_diffusers_unet(state_dict, dtype=None):
+    if "conv_in.weight" not in state_dict:
+        return None
+
     match = {}
     transformer_depth = []
 

@@ -1103,16 +1103,7 @@ class unCLIPConditioning:
         if strength == 0:
             return (conditioning, )
 
-        c = []
-        for t in conditioning:
-            o = t[1].copy()
-            x = {"clip_vision_output": clip_vision_output, "strength": strength, "noise_augmentation": noise_augmentation}
-            if "unclip_conditioning" in o:
-                o["unclip_conditioning"] = o["unclip_conditioning"][:] + [x]
-            else:
-                o["unclip_conditioning"] = [x]
-            n = [t[0], o]
-            c.append(n)
+        c = node_helpers.conditioning_set_values(conditioning, {"unclip_conditioning": [{"clip_vision_output": clip_vision_output, "strength": strength, "noise_augmentation": noise_augmentation}]}, append=True)
         return (c, )
 
 class GLIGENLoader:
@@ -1940,7 +1931,7 @@ class ImagePadForOutpaint:
 
         mask[top:top + d2, left:left + d3] = t
 
-        return (new_image, mask)
+        return (new_image, mask.unsqueeze(0))
 
 
 NODE_CLASS_MAPPINGS = {
@@ -2265,6 +2256,7 @@ def init_builtin_extra_nodes():
         "nodes_preview_any.py",
         "nodes_ace.py",
         "nodes_string.py",
+        "nodes_camera_trajectory.py",
     ]
 
     import_failed = []  # 用于存储加载失败的节点
@@ -2289,6 +2281,10 @@ def init_builtin_api_nodes():
         "nodes_pixverse.py",
         "nodes_stability.py",
         "nodes_pika.py",
+        "nodes_runway.py",
+        "nodes_tripo.py",
+        "nodes_rodin.py",
+        "nodes_gemini.py",
     ]
 
     if not load_custom_node(os.path.join(api_nodes_dir, "canary.py"), module_parent="comfy_api_nodes"):

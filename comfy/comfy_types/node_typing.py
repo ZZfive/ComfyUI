@@ -235,7 +235,7 @@ class ComfyNodeABC(ABC):  # 抽象基类，定义了Comfy节点必须具有的�
     DEPRECATED: bool  # 标记节点为已弃用
     """Flags a node as deprecated, indicating to users that they should find alternatives to this node."""
     API_NODE: Optional[bool]  # 标记节点为API节点
-    """Flags a node as an API node."""
+    """Flags a node as an API node. See: https://docs.comfy.org/tutorials/api-nodes/overview."""
 
     @classmethod
     @abstractmethod  # 抽象方法，必须由子类实现

@@ -908,10 +908,7 @@ class PromptQueue:
         self.queue = []  # 存放任务的队列；内部存放的元素为(number, prompt_id, prompt, extra_data, outputs_to_execute)的元组，任务放入和弹出时通过heapq实现最小堆，number越小，优先级越高
         self.currently_running = {}  # 存放正在执行的任务
         self.history = {}  # 存放历史任务
-        self.flags = {}  # 存放标志
-        # 将自身又赋值给了传入server对象的prompt_queue属性，属于双向引用设计模式，适合需要双向通信但又要保持模块独立的场景
-        # 即此处的server在接收外部请求后会将任务添加到self.queue中，而在队列内部又可通过调用self.server.queue_updated()向调用方发送消息
-        server.prompt_queue = self
+        self.flags = {}
 
     def put(self, item):
         with self.mutex:  # 获取互斥锁
@@ -956,12 +953,20 @@ class PromptQueue:
             self.history[prompt[1]].update(history_result)
             self.server.queue_updated()
 
+    # Note: slow
     def get_current_queue(self):
         with self.mutex:
             out = []
             for x in self.currently_running.values():
                 out += [x]
             return (out, copy.deepcopy(self.queue))
+
+    # read-safe as long as queue items are immutable
+    def get_current_queue_volatile(self):
+        with self.mutex:
+            running = [x for x in self.currently_running.values()]
+            queued = copy.copy(self.queue)
+            return (running, queued)
 
     def get_tasks_remaining(self):
         with self.mutex:
