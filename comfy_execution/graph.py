@@ -2,8 +2,13 @@ from __future__ import annotations
 from typing import Type, Literal
 
 import nodes
-from comfy_execution.graph_utils import is_link
+import asyncio
+import inspect
+from comfy_execution.graph_utils import is_link, ExecutionBlocker
 from comfy.comfy_types.node_typing import ComfyNodeABC, InputTypeDict, InputTypeOptions
+
+# NOTE: ExecutionBlocker code got moved to graph_utils.py to prevent torch being imported too soon during unit tests
+ExecutionBlocker = ExecutionBlocker
 
 class DependencyCycleError(Exception):
     pass
@@ -97,9 +102,11 @@ def get_input_info(
 class TopologicalSort:
     def __init__(self, dynprompt):
         self.dynprompt = dynprompt
-        self.pendingNodes = {}  # 存储需要执行的节点，key是节点id，value是布尔值
-        self.blockCount = {} # Number of nodes this node is directly blocked by；key是节点id，value是int对象，表示阻塞该节点的其他节点总数
-        self.blocking = {} # Which nodes are blocked by this node；key是节点id，value是一个字典，表示被该节点阻塞的所有节点
+        self.pendingNodes = {}
+        self.blockCount = {} # Number of nodes this node is directly blocked by
+        self.blocking = {} # Which nodes are blocked by this node
+        self.externalBlocks = 0
+        self.unblockedEvent = asyncio.Event()
 
     def get_input_info(self, unique_id, input_name):
         class_type = self.dynprompt.get_node(unique_id)["class_type"]
@@ -144,14 +151,25 @@ class TopologicalSort:
                     from_node_id, from_socket = value  # from_node_id表示当前节点来源于节点的id，from_socket表示具体是来源节点中的哪个输出
                     if subgraph_nodes is not None and from_node_id not in subgraph_nodes:
                         continue
-                    _, _, input_info = self.get_input_info(unique_id, input_name)  # 获取当前节点的输入信息
-                    is_lazy = input_info is not None and "lazy" in input_info and input_info["lazy"]  # 判断当前输入是否为lazy
-                    if (include_lazy or not is_lazy) and not self.is_cached(from_node_id):  # 当from_node_id节点不在output缓存中才将其加到node_ids
-                        node_ids.append(from_node_id)
+                    _, _, input_info = self.get_input_info(unique_id, input_name)
+                    is_lazy = input_info is not None and "lazy" in input_info and input_info["lazy"]
+                    if (include_lazy or not is_lazy):
+                        if not self.is_cached(from_node_id):
+                            node_ids.append(from_node_id)
                         links.append((from_node_id, from_socket, unique_id))
 
         for link in links:
             self.add_strong_link(*link)
+
+    def add_external_block(self, node_id):
+        assert node_id in self.blockCount, "Can't add external block to a node that isn't pending"
+        self.externalBlocks += 1
+        self.blockCount[node_id] += 1
+        def unblock():
+            self.externalBlocks -= 1
+            self.blockCount[node_id] -= 1
+            self.unblockedEvent.set()
+        return unblock
 
     def is_cached(self, node_id):
         return False
@@ -176,20 +194,55 @@ class ExecutionList(TopologicalSort):
     def __init__(self, dynprompt, output_cache):
         super().__init__(dynprompt)
         self.output_cache = output_cache
-        self.staged_node_id = None  # 表示工作流中正在执行的节点
+        self.staged_node_id = None
+        self.execution_cache = {}
+        self.execution_cache_listeners = {}
 
     def is_cached(self, node_id):
         return self.output_cache.get(node_id) is not None
 
-    def stage_node_execution(self):  # 逐步采样每次需要执行的节点
+    def cache_link(self, from_node_id, to_node_id):
+        if not to_node_id in self.execution_cache:
+            self.execution_cache[to_node_id] = {}
+        self.execution_cache[to_node_id][from_node_id] = self.output_cache.get(from_node_id)
+        if not from_node_id in self.execution_cache_listeners:
+            self.execution_cache_listeners[from_node_id] = set()
+        self.execution_cache_listeners[from_node_id].add(to_node_id)
+
+    def get_cache(self, from_node_id, to_node_id):
+        if not to_node_id in self.execution_cache:
+            return None
+        value = self.execution_cache[to_node_id].get(from_node_id)
+        if value is None:
+            return None
+        #Write back to the main cache on touch.
+        self.output_cache.set(from_node_id, value)
+        return value
+
+    def cache_update(self, node_id, value):
+        if node_id in self.execution_cache_listeners:
+            for to_node_id in self.execution_cache_listeners[node_id]:
+                if to_node_id in self.execution_cache:
+                    self.execution_cache[to_node_id][node_id] = value
+
+    def add_strong_link(self, from_node_id, from_socket, to_node_id):
+        super().add_strong_link(from_node_id, from_socket, to_node_id)
+        self.cache_link(from_node_id, to_node_id)
+
+    async def stage_node_execution(self):
         assert self.staged_node_id is None
         if self.is_empty():
             return None, None, None
-        available = self.get_ready_nodes()  # 获取所有已经准备好的节点
-        if len(available) == 0:  # 没有节点不被阻塞，即所有节点都被阻塞，表示工作流中存在环，处理循环依赖问题
-            cycled_nodes = self.get_nodes_in_cycle()  #  找出整个环中的所有节点
-            # Because cycles composed entirely of static nodes are caught during initial validation,  因为工作流中静态节点组成的环在初始校验时被捕获，
-            # we will 'blame' the first node in the cycle that is not a static node.  将环中第一个不是静态节点的节点作为错误节点
+        available = self.get_ready_nodes()
+        while len(available) == 0 and self.externalBlocks > 0:
+            # Wait for an external block to be released
+            await self.unblockedEvent.wait()
+            self.unblockedEvent.clear()
+            available = self.get_ready_nodes()
+        if len(available) == 0:
+            cycled_nodes = self.get_nodes_in_cycle()
+            # Because cycles composed entirely of static nodes are caught during initial validation,
+            # we will 'blame' the first node in the cycle that is not a static node.
             blamed_node = cycled_nodes[0]
             for node_id in cycled_nodes:
                 display_node_id = self.dynprompt.get_display_node_id(node_id)
@@ -220,9 +273,16 @@ class ExecutionList(TopologicalSort):
             if hasattr(class_def, 'OUTPUT_NODE') and class_def.OUTPUT_NODE == True:
                 return True
             return False
-        # 如果输出节点可用，请首先执行它。从技术上讲，这对整体执行时间没有影响，但作为用户，能够尽快看到 PreviewImage 显示结果会感觉更好。这里还可以使用一些其他启发式方法来进一步改善用户体验。
+
+        # If an available node is async, do that first.
+        # This will execute the asynchronous function earlier, reducing the overall time.
+        def is_async(node_id):
+            class_type = self.dynprompt.get_node(node_id)["class_type"]
+            class_def = nodes.NODE_CLASS_MAPPINGS[class_type]
+            return inspect.iscoroutinefunction(getattr(class_def, class_def.FUNCTION))
+
         for node_id in node_list:
-            if is_output(node_id):
+            if is_output(node_id) or is_async(node_id):
                 return node_id
 
         #This should handle the VAEDecode -> preview case；优先返回被阻塞的节点中存在输出节点的节点
@@ -248,6 +308,8 @@ class ExecutionList(TopologicalSort):
     def complete_node_execution(self):
         node_id = self.staged_node_id
         self.pop_node(node_id)
+        self.execution_cache.pop(node_id, None)
+        self.execution_cache_listeners.pop(node_id, None)
         self.staged_node_id = None
 
     def get_nodes_in_cycle(self):  # 通过反向拓扑排序，找出环中的所有节点
@@ -268,21 +330,3 @@ class ExecutionList(TopologicalSort):
                 del blocked_by[node_id]
             to_remove = [node_id for node_id in blocked_by if len(blocked_by[node_id]) == 0]
         return list(blocked_by.keys())
-
-class ExecutionBlocker:
-    """
-    Return this from a node and any users will be blocked with the given error message.
-    If the message is None, execution will be blocked silently instead.
-    Generally, you should avoid using this functionality unless absolutely necessary. Whenever it's
-    possible, a lazy input will be more efficient and have a better user experience.
-    This functionality is useful in two cases:
-    1. You want to conditionally prevent an output node from executing. (Particularly a built-in node
-       like SaveImage. For your own output nodes, I would recommend just adding a BOOL input and using
-       lazy evaluation to let it conditionally disable itself.)
-    2. You have a node with multiple possible outputs, some of which are invalid and should not be used.
-       (I would recommend not making nodes like this in the future -- instead, make multiple nodes with
-       different outputs. Unfortunately, there are several popular existing nodes using this pattern.)
-    """
-    def __init__(self, message):
-        self.message = message
-

@@ -1,6 +1,12 @@
+import bisect
+import gc
 import itertools
+import psutil
+import time
+import torch
 from typing import Sequence, Mapping, Dict
 from comfy_execution.graph import DynamicPrompt
+from abc import ABC, abstractmethod
 
 import nodes
 
@@ -16,12 +22,13 @@ def include_unique_id_in_input(class_type: str) -> bool:  # 判断节点类定�
     NODE_CLASS_CONTAINS_UNIQUE_ID[class_type] = "UNIQUE_ID" in class_def.INPUT_TYPES().get("hidden", {}).values()  # 如果节点类定义中的INPUT_TYPES包含UNIQUE_ID，则返回True
     return NODE_CLASS_CONTAINS_UNIQUE_ID[class_type]
 
-class CacheKeySet:
+class CacheKeySet(ABC):
     def __init__(self, dynprompt, node_ids, is_changed_cache):
         self.keys = {}
         self.subcache_keys = {}
 
-    def add_keys(self, node_ids):
+    @abstractmethod
+    async def add_keys(self, node_ids):
         raise NotImplementedError()
 
     def all_node_ids(self):
@@ -46,7 +53,7 @@ class Unhashable:
 def to_hashable(obj):  # 将任意python对象递归地转换为可哈希的形式
     # So that we don't infinitely recurse since frozenset and tuples
     # are Sequences.
-    if isinstance(obj, (int, float, str, bool, type(None))):
+    if isinstance(obj, (int, float, str, bool, bytes, type(None))):
         return obj
     elif isinstance(obj, Mapping):  # 如果obj是字典类型
         return frozenset([(to_hashable(k), to_hashable(v)) for k, v in sorted(obj.items())])  # frozenset是一种不可变的、可哈希的集合类型
@@ -60,9 +67,8 @@ class CacheKeySetID(CacheKeySet):
     def __init__(self, dynprompt: DynamicPrompt, node_ids, is_changed_cache):
         super().__init__(dynprompt, node_ids, is_changed_cache)
         self.dynprompt = dynprompt
-        self.add_keys(node_ids)
 
-    def add_keys(self, node_ids):
+    async def add_keys(self, node_ids):
         for node_id in node_ids:
             if node_id in self.keys:  # 如果节点ID已经在keys中，则跳过
                 continue
@@ -77,45 +83,44 @@ class CacheKeySetInputSignature(CacheKeySet):  # 创建基于节点输入结构�
         super().__init__(dynprompt, node_ids, is_changed_cache)  # 此处指定父类的初始化函数是为了将之前的缓存key全部清空
         self.dynprompt = dynprompt
         self.is_changed_cache = is_changed_cache
-        self.add_keys(node_ids)
 
     def include_node_id_in_input(self) -> bool:  # 决定生成缓存键时是否默认模板节点ID
         return False  # 表示默认不考虑节点ID，只依赖于节点的输入内容；相同输入的节点可以共享缓存
 
-    def add_keys(self, node_ids):  # 为指定的节点生成并存储缓存键
+    async def add_keys(self, node_ids):
         for node_id in node_ids:
             if node_id in self.keys:  # 如果当前节点ID已经在keys中，则跳过
                 continue
             if not self.dynprompt.has_node(node_id):  # 如果当前节点ID工作流中不存在，则跳过
                 continue
-            node = self.dynprompt.get_node(node_id)  # 基于节点ID获取工作流中对应的节点信息
-            self.keys[node_id] = self.get_node_signature(self.dynprompt, node_id)  # 为当前节点生成缓存键
-            self.subcache_keys[node_id] = (node_id, node["class_type"])  # 为当前节点的子缓存生成缓存键
+            node = self.dynprompt.get_node(node_id)
+            self.keys[node_id] = await self.get_node_signature(self.dynprompt, node_id)
+            self.subcache_keys[node_id] = (node_id, node["class_type"])
 
-    def get_node_signature(self, dynprompt, node_id):
+    async def get_node_signature(self, dynprompt, node_id):
         signature = []
-        ancestors, order_mapping = self.get_ordered_ancestry(dynprompt, node_id)  # 获取节点ID的所有祖先节点，并按照它们在节点输入中的顺序排列
-        signature.append(self.get_immediate_node_signature(dynprompt, node_id, order_mapping))  # 为当前节点生成缓存键
-        for ancestor_id in ancestors:  # 遍历当前节点的所有祖先节点，为每个祖先节点生成缓存键
-            signature.append(self.get_immediate_node_signature(dynprompt, ancestor_id, order_mapping))
+        ancestors, order_mapping = self.get_ordered_ancestry(dynprompt, node_id)
+        signature.append(await self.get_immediate_node_signature(dynprompt, node_id, order_mapping))
+        for ancestor_id in ancestors:
+            signature.append(await self.get_immediate_node_signature(dynprompt, ancestor_id, order_mapping))
         return to_hashable(signature)
 
-    def get_immediate_node_signature(self, dynprompt, node_id, ancestor_order_mapping):  # 给单个节点生成缓存键
+    async def get_immediate_node_signature(self, dynprompt, node_id, ancestor_order_mapping):
         if not dynprompt.has_node(node_id):
             # This node doesn't exist -- we can't cache it.
             return [float("NaN")]
         node = dynprompt.get_node(node_id)
-        class_type = node["class_type"]  # 节点对应的类名
-        class_def = nodes.NODE_CLASS_MAPPINGS[class_type]  # 节点对应的类定义
-        signature = [class_type, self.is_changed_cache.get(node_id)]  # 缓存键的组成部分
-        if self.include_node_id_in_input() or (hasattr(class_def, "NOT_IDEMPOTENT") and class_def.NOT_IDEMPOTENT) or include_unique_id_in_input(class_type):  # 如果节点ID在缓存键中，或者节点类定义中包含NOT_IDEMPOTENT属性，或者节点类定义中包含UNIQUE_ID属性
-            signature.append(node_id)  # 将节点ID添加到缓存键中
-        inputs = node["inputs"]  # 获取节点的输入
-        for key in sorted(inputs.keys()):  # 对输入的键进行排序
-            if is_link(inputs[key]):  # 如果输入是链接，则将链接的祖先节点ID和祖先节点输出端口添加到缓存键中
-                (ancestor_id, ancestor_socket) = inputs[key]  # 获取链接的祖先节点ID和输入对应的祖先节点输出的端口
-                ancestor_index = ancestor_order_mapping[ancestor_id]  # 获取祖先节点在节点输入中的位置
-                signature.append((key,("ANCESTOR", ancestor_index, ancestor_socket)))  # 将祖先节点ID和祖先节点输入端口添加到缓存键中
+        class_type = node["class_type"]
+        class_def = nodes.NODE_CLASS_MAPPINGS[class_type]
+        signature = [class_type, await self.is_changed_cache.get(node_id)]
+        if self.include_node_id_in_input() or (hasattr(class_def, "NOT_IDEMPOTENT") and class_def.NOT_IDEMPOTENT) or include_unique_id_in_input(class_type):
+            signature.append(node_id)
+        inputs = node["inputs"]
+        for key in sorted(inputs.keys()):
+            if is_link(inputs[key]):
+                (ancestor_id, ancestor_socket) = inputs[key]
+                ancestor_index = ancestor_order_mapping[ancestor_id]
+                signature.append((key,("ANCESTOR", ancestor_index, ancestor_socket)))
             else:
                 signature.append((key, inputs[key]))  # 将输入的键和输入的值添加到缓存键中
         return signature
@@ -150,9 +155,10 @@ class BasicCache:
         self.cache = {}
         self.subcaches = {}
 
-    def set_prompt(self, dynprompt, node_ids, is_changed_cache):
-        self.dynprompt = dynprompt  # 更新换成你中的动态prompt
-        self.cache_key_set = self.key_class(dynprompt, node_ids, is_changed_cache)  # 会给工作流prompt中的所有节点生成缓存key，返回的是保存缓存key的实际对象
+    async def set_prompt(self, dynprompt, node_ids, is_changed_cache):
+        self.dynprompt = dynprompt
+        self.cache_key_set = self.key_class(dynprompt, node_ids, is_changed_cache)
+        await self.cache_key_set.add_keys(node_ids)
         self.is_changed_cache = is_changed_cache
         self.initialized = True
 
@@ -187,6 +193,9 @@ class BasicCache:
         self._clean_cache()
         self._clean_subcaches()
 
+    def poll(self, **kwargs):
+        pass
+
     def _set_immediate(self, node_id, value):
         assert self.initialized
         cache_key = self.cache_key_set.get_data_key(node_id)
@@ -201,13 +210,13 @@ class BasicCache:
         else:
             return None
 
-    def _ensure_subcache(self, node_id, children_ids):
+    async def _ensure_subcache(self, node_id, children_ids):
         subcache_key = self.cache_key_set.get_subcache_key(node_id)
         subcache = self.subcaches.get(subcache_key, None)
         if subcache is None:
             subcache = BasicCache(self.key_class)
             self.subcaches[subcache_key] = subcache
-        subcache.set_prompt(self.dynprompt, children_ids, self.is_changed_cache)
+        await subcache.set_prompt(self.dynprompt, children_ids, self.is_changed_cache)
         return subcache
 
     def _get_subcache(self, node_id):  # 获取给定节点的子缓存
@@ -259,10 +268,33 @@ class HierarchicalCache(BasicCache):
         assert cache is not None
         cache._set_immediate(node_id, value)
 
-    def ensure_subcache_for(self, node_id, children_ids):
+    async def ensure_subcache_for(self, node_id, children_ids):
         cache = self._get_cache_for(node_id)
         assert cache is not None
-        return cache._ensure_subcache(node_id, children_ids)
+        return await cache._ensure_subcache(node_id, children_ids)
+
+class NullCache:
+
+    async def set_prompt(self, dynprompt, node_ids, is_changed_cache):
+        pass
+
+    def all_node_ids(self):
+        return []
+
+    def clean_unused(self):
+        pass
+
+    def poll(self, **kwargs):
+        pass
+
+    def get(self, node_id):
+        return None
+
+    def set(self, node_id, value):
+        pass
+
+    async def ensure_subcache_for(self, node_id, children_ids):
+        return self
 
 class LRUCache(BasicCache):
     def __init__(self, key_class, max_size=100):
@@ -273,8 +305,8 @@ class LRUCache(BasicCache):
         self.used_generation = {}
         self.children = {}
 
-    def set_prompt(self, dynprompt, node_ids, is_changed_cache):
-        super().set_prompt(dynprompt, node_ids, is_changed_cache)
+    async def set_prompt(self, dynprompt, node_ids, is_changed_cache):
+        await super().set_prompt(dynprompt, node_ids, is_changed_cache)
         self.generation += 1
         for node_id in node_ids:
             self._mark_used(node_id)
@@ -303,11 +335,11 @@ class LRUCache(BasicCache):
         self._mark_used(node_id)
         return self._set_immediate(node_id, value)
 
-    def ensure_subcache_for(self, node_id, children_ids):
+    async def ensure_subcache_for(self, node_id, children_ids):
         # Just uses subcaches for tracking 'live' nodes
-        super()._ensure_subcache(node_id, children_ids)
+        await super()._ensure_subcache(node_id, children_ids)
 
-        self.cache_key_set.add_keys(children_ids)
+        await self.cache_key_set.add_keys(children_ids)
         self._mark_used(node_id)
         cache_key = self.cache_key_set.get_data_key(node_id)
         self.children[cache_key] = []
@@ -317,155 +349,75 @@ class LRUCache(BasicCache):
         return self
 
 
-class DependencyAwareCache(BasicCache):
-    """
-    A cache implementation that tracks dependencies between nodes and manages
-    their execution and caching accordingly. It extends the BasicCache class.
-    Nodes are removed from this cache once all of their descendants have been
-    executed.
-    """
+#Iterating the cache for usage analysis might be expensive, so if we trigger make sure
+#to take a chunk out to give breathing space on high-node / low-ram-per-node flows.
+
+RAM_CACHE_HYSTERESIS = 1.1
+
+#This is kinda in GB but not really. It needs to be non-zero for the below heuristic
+#and as long as Multi GB models dwarf this it will approximate OOM scoring OK
+
+RAM_CACHE_DEFAULT_RAM_USAGE = 0.1
+
+#Exponential bias towards evicting older workflows so garbage will be taken out
+#in constantly changing setups.
+
+RAM_CACHE_OLD_WORKFLOW_OOM_MULTIPLIER = 1.3
+
+class RAMPressureCache(LRUCache):
 
     def __init__(self, key_class):
-        """
-        Initialize the DependencyAwareCache.
-
-        Args:
-            key_class: The class used for generating cache keys.
-        """
-        super().__init__(key_class)
-        self.descendants = {}  # Maps node_id -> set of descendant node_ids
-        self.ancestors = {}    # Maps node_id -> set of ancestor node_ids
-        self.executed_nodes = set()  # Tracks nodes that have been executed
-
-    def set_prompt(self, dynprompt, node_ids, is_changed_cache):
-        """
-        Clear the entire cache and rebuild the dependency graph.
-
-        Args:
-            dynprompt: The dynamic prompt object containing node information.
-            node_ids: List of node IDs to initialize the cache for.
-            is_changed_cache: Flag indicating if the cache has changed.
-        """
-        # Clear all existing cache data
-        self.cache.clear()
-        self.subcaches.clear()
-        self.descendants.clear()
-        self.ancestors.clear()
-        self.executed_nodes.clear()
-
-        # Call the parent method to initialize the cache with the new prompt
-        super().set_prompt(dynprompt, node_ids, is_changed_cache)
-
-        # Rebuild the dependency graph
-        self._build_dependency_graph(dynprompt, node_ids)
-
-    def _build_dependency_graph(self, dynprompt, node_ids):
-        """
-        Build the dependency graph for all nodes.
-
-        Args:
-            dynprompt: The dynamic prompt object containing node information.
-            node_ids: List of node IDs to build the graph for.
-        """
-        self.descendants.clear()
-        self.ancestors.clear()
-        for node_id in node_ids:
-            self.descendants[node_id] = set()
-            self.ancestors[node_id] = set()
-
-        for node_id in node_ids:
-            inputs = dynprompt.get_node(node_id)["inputs"]
-            for input_data in inputs.values():
-                if is_link(input_data):  # Check if the input is a link to another node
-                    ancestor_id = input_data[0]
-                    self.descendants[ancestor_id].add(node_id)
-                    self.ancestors[node_id].add(ancestor_id)
-
-    def set(self, node_id, value):
-        """
-        Mark a node as executed and store its value in the cache.
-
-        Args:
-            node_id: The ID of the node to store.
-            value: The value to store for the node.
-        """
-        self._set_immediate(node_id, value)
-        self.executed_nodes.add(node_id)
-        self._cleanup_ancestors(node_id)
-
-    def get(self, node_id):
-        """
-        Retrieve the cached value for a node.
-
-        Args:
-            node_id: The ID of the node to retrieve.
-
-        Returns:
-            The cached value for the node.
-        """
-        return self._get_immediate(node_id)
-
-    def ensure_subcache_for(self, node_id, children_ids):
-        """
-        Ensure a subcache exists for a node and update dependencies.
-
-        Args:
-            node_id: The ID of the parent node.
-            children_ids: List of child node IDs to associate with the parent node.
-
-        Returns:
-            The subcache object for the node.
-        """
-        subcache = super()._ensure_subcache(node_id, children_ids)
-        for child_id in children_ids:
-            self.descendants[node_id].add(child_id)
-            self.ancestors[child_id].add(node_id)
-        return subcache
-
-    def _cleanup_ancestors(self, node_id):
-        """
-        Check if ancestors of a node can be removed from the cache.
-
-        Args:
-            node_id: The ID of the node whose ancestors are to be checked.
-        """
-        for ancestor_id in self.ancestors.get(node_id, []):
-            if ancestor_id in self.executed_nodes:
-                # Remove ancestor if all its descendants have been executed
-                if all(descendant in self.executed_nodes for descendant in self.descendants[ancestor_id]):
-                    self._remove_node(ancestor_id)
-
-    def _remove_node(self, node_id):
-        """
-        Remove a node from the cache.
-
-        Args:
-            node_id: The ID of the node to remove.
-        """
-        cache_key = self.cache_key_set.get_data_key(node_id)
-        if cache_key in self.cache:
-            del self.cache[cache_key]
-        subcache_key = self.cache_key_set.get_subcache_key(node_id)
-        if subcache_key in self.subcaches:
-            del self.subcaches[subcache_key]
+        super().__init__(key_class, 0)
+        self.timestamps = {}
 
     def clean_unused(self):
-        """
-        Clean up unused nodes. This is a no-op for this cache implementation.
-        """
-        pass
+        self._clean_subcaches()
 
-    def recursive_debug_dump(self):
-        """
-        Dump the cache and dependency graph for debugging.
+    def set(self, node_id, value):
+        self.timestamps[self.cache_key_set.get_data_key(node_id)] = time.time()
+        super().set(node_id, value)
 
-        Returns:
-            A list containing the cache state and dependency graph.
-        """
-        result = super().recursive_debug_dump()
-        result.append({
-            "descendants": self.descendants,
-            "ancestors": self.ancestors,
-            "executed_nodes": list(self.executed_nodes),
-        })
-        return result
+    def get(self, node_id):
+        self.timestamps[self.cache_key_set.get_data_key(node_id)] = time.time()
+        return super().get(node_id)
+
+    def poll(self, ram_headroom):
+        def _ram_gb():
+            return psutil.virtual_memory().available / (1024**3)
+
+        if _ram_gb() > ram_headroom:
+            return
+        gc.collect()
+        if _ram_gb() > ram_headroom:
+            return
+
+        clean_list = []
+
+        for key, (outputs, _), in self.cache.items():
+            oom_score =  RAM_CACHE_OLD_WORKFLOW_OOM_MULTIPLIER ** (self.generation - self.used_generation[key])
+
+            ram_usage = RAM_CACHE_DEFAULT_RAM_USAGE
+            def scan_list_for_ram_usage(outputs):
+                nonlocal ram_usage
+                if outputs is None:
+                    return
+                for output in outputs:
+                    if isinstance(output, list):
+                        scan_list_for_ram_usage(output)
+                    elif isinstance(output, torch.Tensor) and output.device.type == 'cpu':
+                        #score Tensors at a 50% discount for RAM usage as they are likely to
+                        #be high value intermediates
+                        ram_usage += (output.numel() * output.element_size()) * 0.5
+                    elif hasattr(output, "get_ram_usage"):
+                        ram_usage += output.get_ram_usage()
+            scan_list_for_ram_usage(outputs)
+
+            oom_score *= ram_usage
+            #In the case where we have no information on the node ram usage at all,
+            #break OOM score ties on the last touch timestamp (pure LRU)
+            bisect.insort(clean_list, (oom_score, self.timestamps[key], key))
+
+        while _ram_gb() < ram_headroom * RAM_CACHE_HYSTERESIS and clean_list:
+            _, _, key = clean_list.pop()
+            del self.cache[key]
+            gc.collect()

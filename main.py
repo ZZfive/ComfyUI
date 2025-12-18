@@ -11,14 +11,66 @@ import itertools
 import utils.extra_config
 import logging
 import sys
+from comfy_execution.progress import get_progress_state
+from comfy_execution.utils import get_executing_context
+from comfy_api import feature_flags
+
 
 if __name__ == "__main__":
     #NOTE: These do not do anything on core ComfyUI, they are for custom nodes.
     os.environ['HF_HUB_DISABLE_TELEMETRY'] = '1'  # 禁用 Hugging Face Hub 的遥测数据收集
     os.environ['DO_NOT_TRACK'] = '1'  # 一个常用的环境变量，许多开源库和工具会检查此变量，以确定是否收集用户数据
 
-
 setup_logger(log_level=args.verbose, use_stdout=args.log_stdout)
+
+if os.name == "nt":
+    os.environ['MIMALLOC_PURGE_DELAY'] = '0'
+
+if __name__ == "__main__":
+    os.environ['TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL'] = '1'
+    if args.default_device is not None:
+        default_dev = args.default_device
+        devices = list(range(32))
+        devices.remove(default_dev)
+        devices.insert(0, default_dev)
+        devices = ','.join(map(str, devices))
+        os.environ['CUDA_VISIBLE_DEVICES'] = str(devices)
+        os.environ['HIP_VISIBLE_DEVICES'] = str(devices)
+
+    if args.cuda_device is not None:
+        os.environ['CUDA_VISIBLE_DEVICES'] = str(args.cuda_device)
+        os.environ['HIP_VISIBLE_DEVICES'] = str(args.cuda_device)
+        os.environ["ASCEND_RT_VISIBLE_DEVICES"] = str(args.cuda_device)
+        logging.info("Set cuda device to: {}".format(args.cuda_device))
+
+    if args.oneapi_device_selector is not None:
+        os.environ['ONEAPI_DEVICE_SELECTOR'] = args.oneapi_device_selector
+        logging.info("Set oneapi device selector to: {}".format(args.oneapi_device_selector))
+
+    if args.deterministic:
+        if 'CUBLAS_WORKSPACE_CONFIG' not in os.environ:
+            os.environ['CUBLAS_WORKSPACE_CONFIG'] = ":4096:8"
+
+    import cuda_malloc
+    if "rocm" in cuda_malloc.get_torch_version_noimport():
+        os.environ['OCL_SET_SVM_SIZE'] = '262144'  # set at the request of AMD
+
+
+def handle_comfyui_manager_unavailable():
+    if not args.windows_standalone_build:
+        logging.warning(f"\n\nYou appear to be running comfyui-manager from source, this is not recommended. Please install comfyui-manager using the following command:\ncommand:\n\t{sys.executable} -m pip install --pre comfyui_manager\n")
+    args.enable_manager = False
+
+
+if args.enable_manager:
+    if importlib.util.find_spec("comfyui_manager"):
+        import comfyui_manager
+
+        if not comfyui_manager.__file__ or not comfyui_manager.__file__.endswith('__init__.py'):
+            handle_comfyui_manager_unavailable()
+    else:
+        handle_comfyui_manager_unavailable()
+
 
 def apply_custom_paths():
     # extra model paths
@@ -56,6 +108,9 @@ def apply_custom_paths():
 
 
 def execute_prestartup_script():
+    if args.disable_all_custom_nodes and len(args.whitelist_custom_nodes) == 0:
+        return
+
     def execute_script(script_path):
         module_name = os.path.splitext(script_path)[0]
         try:
@@ -67,24 +122,29 @@ def execute_prestartup_script():
             logging.error(f"Failed to execute startup-script: {script_path} / {e}")
         return False
 
-    if args.disable_all_custom_nodes:  # 如果禁用了所有自定义节点，则直接返回
-        return
-
-    node_paths = folder_paths.get_folder_paths("custom_nodes")  # 获取自定义节点的路径
+    node_paths = folder_paths.get_folder_paths("custom_nodes")
     for custom_node_path in node_paths:
         possible_modules = os.listdir(custom_node_path)  # 获取自定义节点路径下的所有文件和文件夹
         node_prestartup_times = []  # 用于记录自定义节点预启动时间
 
         for possible_module in possible_modules:
             module_path = os.path.join(custom_node_path, possible_module)
+
+            if args.enable_manager:
+                if comfyui_manager.should_be_disabled(module_path):
+                    continue
+
             if os.path.isfile(module_path) or module_path.endswith(".disabled") or module_path == "__pycache__":
                 continue  # 如果module_path是文件或以.disabled结尾或是__pycache__，则跳过
 
             script_path = os.path.join(module_path, "prestartup_script.py")
             if os.path.exists(script_path):
-                time_before = time.perf_counter()  # 记录开始时间
-                success = execute_script(script_path)  # 执行脚本
-                node_prestartup_times.append((time.perf_counter() - time_before, module_path, success))  # 记录执行时间
+                if args.disable_all_custom_nodes and possible_module not in args.whitelist_custom_nodes:
+                    logging.info(f"Prestartup Skipping {possible_module} due to disable_all_custom_nodes and whitelist_custom_nodes")
+                    continue
+                time_before = time.perf_counter()
+                success = execute_script(script_path)
+                node_prestartup_times.append((time.perf_counter() - time_before, module_path, success))
     if len(node_prestartup_times) > 0:
         logging.info("\nPrestartup times for custom nodes:")
         for n in sorted(node_prestartup_times):
@@ -96,6 +156,10 @@ def execute_prestartup_script():
         logging.info("")
 
 apply_custom_paths()
+
+if args.enable_manager:
+    comfyui_manager.prestartup()
+
 execute_prestartup_script()
 
 
@@ -105,31 +169,14 @@ import shutil
 import threading
 import gc
 
-
-if os.name == "nt":
-    logging.getLogger("xformers").addFilter(lambda record: 'A matching Triton is not available' not in record.getMessage())
-
-if __name__ == "__main__":
-    if args.cuda_device is not None:
-        os.environ['CUDA_VISIBLE_DEVICES'] = str(args.cuda_device)
-        os.environ['HIP_VISIBLE_DEVICES'] = str(args.cuda_device)
-        logging.info("Set cuda device to: {}".format(args.cuda_device))
-
-    if args.oneapi_device_selector is not None:
-        os.environ['ONEAPI_DEVICE_SELECTOR'] = args.oneapi_device_selector
-        logging.info("Set oneapi device selector to: {}".format(args.oneapi_device_selector))
-
-    if args.deterministic:
-        if 'CUBLAS_WORKSPACE_CONFIG' not in os.environ:
-            os.environ['CUBLAS_WORKSPACE_CONFIG'] = ":4096:8"
-
-    import cuda_malloc
+if 'torch' in sys.modules:
+    logging.warning("WARNING: Potential Error in code: Torch already imported, torch should never be imported before this point.")
 
 import comfy.utils
 
 import execution
 import server
-from server import BinaryEventTypes
+from protocol import BinaryEventTypes
 import nodes
 import comfy.model_management
 import comfyui_version
@@ -153,13 +200,15 @@ def prompt_worker(q, server_instance):
     cache_type = execution.CacheType.CLASSIC
     if args.cache_lru > 0:  # 如果设置了lru缓存大小，则使用LRU缓存
         cache_type = execution.CacheType.LRU
-    elif args.cache_none:  # 如果设置了不使用缓存，则使用依赖感知的缓存
-        cache_type = execution.CacheType.DEPENDENCY_AWARE
+    elif args.cache_ram > 0:
+        cache_type = execution.CacheType.RAM_PRESSURE
+    elif args.cache_none:
+        cache_type = execution.CacheType.NONE
 
-    e = execution.PromptExecutor(server_instance, cache_type=cache_type, cache_size=args.cache_lru)
-    last_gc_collect = 0  # 上次垃圾回收时间
-    need_gc = False  # 是否需要垃圾回收
-    gc_collect_interval = 10.0  # 垃圾回收间隔
+    e = execution.PromptExecutor(server_instance, cache_type=cache_type, cache_args={ "lru" : args.cache_lru, "ram" : args.cache_ram } )
+    last_gc_collect = 0
+    need_gc = False
+    gc_collect_interval = 10.0
 
     while True:
         timeout = 1000.0
@@ -173,20 +222,33 @@ def prompt_worker(q, server_instance):
             prompt_id = item[1]  # 获取prompt_id；item的格式为(number, prompt_id, prompt, extra_data, outputs_to_execute)
             server_instance.last_prompt_id = prompt_id  # 更新last_prompt_id
 
-            e.execute(item[2], prompt_id, item[3], item[4])  # 执行任务
+            sensitive = item[5]
+            extra_data = item[3].copy()
+            for k in sensitive:
+                extra_data[k] = sensitive[k]
+
+            e.execute(item[2], prompt_id, extra_data, item[4])
             need_gc = True
+
+            remove_sensitive = lambda prompt: prompt[:5] + prompt[6:]
             q.task_done(item_id,
                         e.history_result,
                         status=execution.PromptQueue.ExecutionStatus(
                             status_str='success' if e.success else 'error',
                             completed=e.success,
-                            messages=e.status_messages))  # 更新处理完的任务状态，记录到历史队列中
+                            messages=e.status_messages), process_item=remove_sensitive)
             if server_instance.client_id is not None:
                 server_instance.send_sync("executing", {"node": None, "prompt_id": prompt_id}, server_instance.client_id)
 
             current_time = time.perf_counter()
             execution_time = current_time - execution_start_time
-            logging.info("Prompt executed in {:.2f} seconds".format(execution_time))
+
+            # Log Time in a more readable way after 10 minutes
+            if execution_time > 600:
+                execution_time = time.strftime("%H:%M:%S", time.gmtime(execution_time))
+                logging.info(f"Prompt executed in {execution_time}")
+            else:
+                logging.info("Prompt executed in {:.2f} seconds".format(execution_time))
 
         flags = q.get_flags()
         free_memory = flags.get("free_memory", False)
@@ -219,15 +281,34 @@ async def run(server_instance, address='', port=8188, verbose=True, call_on_star
         server_instance.start_multi_address(addresses, call_on_start, verbose), server_instance.publish_loop()  # publish_loop会持续地从messages队列中获取消息，并将消息发送给客户端
     )  # 异步同时运行server.start_multi_address和server.publish_loop两个函数
 
-
 def hijack_progress(server_instance):
-    def hook(value, total, preview_image):
-        comfy.model_management.throw_exception_if_processing_interrupted()  # 采样过程若中断会排除异常
-        progress = {"value": value, "max": total, "prompt_id": server_instance.last_prompt_id, "node": server_instance.last_node_id}
+    def hook(value, total, preview_image, prompt_id=None, node_id=None):
+        executing_context = get_executing_context()
+        if prompt_id is None and executing_context is not None:
+            prompt_id = executing_context.prompt_id
+        if node_id is None and executing_context is not None:
+            node_id = executing_context.node_id
+        comfy.model_management.throw_exception_if_processing_interrupted()
+        if prompt_id is None:
+            prompt_id = server_instance.last_prompt_id
+        if node_id is None:
+            node_id = server_instance.last_node_id
+        progress = {"value": value, "max": total, "prompt_id": prompt_id, "node": node_id}
+        get_progress_state().update_progress(node_id, value, total, preview_image)
 
         server_instance.send_sync("progress", progress, server_instance.client_id)  # 将信息信息发送给客户端，其可以更新进度
         if preview_image is not None:
-            server_instance.send_sync(BinaryEventTypes.UNENCODED_PREVIEW_IMAGE, preview_image, server_instance.client_id)  # 如果有预览图像可用，通过服务器的 send_sync 方法将其发送给客户端
+            # Only send old method if client doesn't support preview metadata
+            if not feature_flags.supports_feature(
+                server_instance.sockets_metadata,
+                server_instance.client_id,
+                "supports_preview_metadata",
+            ):
+                server_instance.send_sync(
+                    BinaryEventTypes.UNENCODED_PREVIEW_IMAGE,
+                    preview_image,
+                    server_instance.client_id,
+                )
 
     comfy.utils.set_progress_bar_global_hook(hook)  # 设置全局进度条钩子，将其设置为内部定义的 hook 函数。这意味着每当进度更新时，都会调用 hook 函数来处理更新事件
 
@@ -236,6 +317,15 @@ def cleanup_temp():  # 清理临时文件夹
     temp_dir = folder_paths.get_temp_directory()
     if os.path.exists(temp_dir):
         shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def setup_database():
+    try:
+        from app.database.db import init_db, dependencies_available
+        if dependencies_available():
+            init_db()
+    except Exception as e:
+        logging.error(f"Failed to initialize database. Please ensure you have installed the latest requirements. If the error persists, please report this as in future the database will be required: {e}")
 
 
 def start_comfyui(asyncio_loop=None):
@@ -261,11 +351,18 @@ def start_comfyui(asyncio_loop=None):
         asyncio.set_event_loop(asyncio_loop)  # 设置事件循环
     prompt_server = server.PromptServer(asyncio_loop)  # 创建PromptServer实例，处理HTTP请求的服务器
 
+    if args.enable_manager and not args.disable_manager_ui:
+        comfyui_manager.start()
+
     hook_breaker_ac10a0.save_functions()
-    nodes.init_extra_nodes(init_custom_nodes=not args.disable_all_custom_nodes, init_api_nodes=not args.disable_api_nodes)  # 动态加载自定义节点
+    asyncio_loop.run_until_complete(nodes.init_extra_nodes(
+        init_custom_nodes=(not args.disable_all_custom_nodes) or len(args.whitelist_custom_nodes) > 0,
+        init_api_nodes=not args.disable_api_nodes
+    ))
     hook_breaker_ac10a0.restore_functions()
 
-    cuda_malloc_warning()  # 检查目前使用的显卡是否支持cuda-malloc
+    cuda_malloc_warning()
+    setup_database()
 
     prompt_server.add_routes()  # prompt_server对象添加hTTP路由
     hijack_progress(prompt_server)  # 设置进度条钩子
@@ -299,6 +396,9 @@ if __name__ == "__main__":
     # Running directly, just start ComfyUI.
     logging.info("Python version: {}".format(sys.version))
     logging.info("ComfyUI version: {}".format(comfyui_version.__version__))
+
+    if sys.version_info.major == 3 and sys.version_info.minor < 10:
+        logging.warning("WARNING: You are using a python version older than 3.10, please upgrade to a newer one. 3.12 and above is recommended.")
 
     event_loop, _, start_all_func = start_comfyui()
     try:

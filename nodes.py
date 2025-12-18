@@ -1,10 +1,12 @@
 from __future__ import annotations
 import torch
 
+
 import os
 import sys
 import json
 import hashlib
+import inspect
 import traceback
 import math
 import time
@@ -26,6 +28,9 @@ import comfy.sd
 import comfy.utils
 import comfy.controlnet
 from comfy.comfy_types import IO, ComfyNodeABC, InputTypeDict, FileLocator
+from comfy_api.internal import register_versions, ComfyAPIWithVersion
+from comfy_api.version_list import supported_versions
+from comfy_api.latest import io, ComfyExtension
 
 import comfy.clip_vision
 
@@ -37,6 +42,9 @@ import importlib
 import folder_paths
 import latent_preview
 import node_helpers
+
+if args.enable_manager:
+    import comfyui_manager
 
 def before_node_execution():
     comfy.model_management.throw_exception_if_processing_interrupted()
@@ -687,8 +695,10 @@ class LoraLoaderModelOnly(LoraLoader):
         return (self.load_lora(model, None, lora_name, strength_model, 0)[0],)
 
 class VAELoader:
+    video_taes = ["taehv", "lighttaew2_2", "lighttaew2_1", "lighttaehy1_5"]
+    image_taes = ["taesd", "taesdxl", "taesd3", "taef1"]
     @staticmethod
-    def vae_list():
+    def vae_list(s):
         vaes = folder_paths.get_filename_list("vae")
         approx_vaes = folder_paths.get_filename_list("vae_approx")
         sdxl_taesd_enc = False
@@ -717,6 +727,11 @@ class VAELoader:
                 f1_taesd_dec = True
             elif v.startswith("taef1_decoder."):
                 f1_taesd_enc = True
+            else:
+                for tae in s.video_taes:
+                    if v.startswith(tae):
+                        vaes.append(v)
+
         if sd1_taesd_dec and sd1_taesd_enc:
             vaes.append("taesd")
         if sdxl_taesd_dec and sdxl_taesd_enc:
@@ -725,6 +740,7 @@ class VAELoader:
             vaes.append("taesd3")
         if f1_taesd_dec and f1_taesd_enc:
             vaes.append("taef1")
+        vaes.append("pixel_space")
         return vaes
 
     @staticmethod
@@ -759,7 +775,7 @@ class VAELoader:
 
     @classmethod
     def INPUT_TYPES(s):
-        return {"required": { "vae_name": (s.vae_list(), )}}
+        return {"required": { "vae_name": (s.vae_list(s), )}}
     RETURN_TYPES = ("VAE",)
     FUNCTION = "load_vae"
 
@@ -767,10 +783,16 @@ class VAELoader:
 
     #TODO: scale factor?
     def load_vae(self, vae_name):
-        if vae_name in ["taesd", "taesdxl", "taesd3", "taef1"]:
+        if vae_name == "pixel_space":
+            sd = {}
+            sd["pixel_space_vae"] = torch.tensor(1.0)
+        elif vae_name in self.image_taes:
             sd = self.load_taesd(vae_name)
         else:
-            vae_path = folder_paths.get_full_path_or_raise("vae", vae_name)
+            if os.path.splitext(vae_name)[0] in self.video_taes:
+                vae_path = folder_paths.get_full_path_or_raise("vae_approx", vae_name)
+            else:
+                vae_path = folder_paths.get_full_path_or_raise("vae", vae_name)
             sd = comfy.utils.load_torch_file(vae_path)
         vae = comfy.sd.VAE(sd=sd)
         vae.throw_exception_if_invalid()
@@ -920,7 +942,7 @@ class CLIPLoader:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": { "clip_name": (folder_paths.get_filename_list("text_encoders"), ),
-                              "type": (["stable_diffusion", "stable_cascade", "sd3", "stable_audio", "mochi", "ltxv", "pixart", "cosmos", "lumina2", "wan", "hidream", "chroma", "ace"], ),
+                              "type": (["stable_diffusion", "stable_cascade", "sd3", "stable_audio", "mochi", "ltxv", "pixart", "cosmos", "lumina2", "wan", "hidream", "chroma", "ace", "omnigen2", "qwen_image", "hunyuan_image", "flux2", "ovis"], ),
                               },
                 "optional": {
                               "device": (["default", "cpu"], {"advanced": True}),
@@ -930,7 +952,7 @@ class CLIPLoader:
 
     CATEGORY = "advanced/loaders"
 
-    DESCRIPTION = "[Recipes]\n\nstable_diffusion: clip-l\nstable_cascade: clip-g\nsd3: t5 xxl/ clip-g / clip-l\nstable_audio: t5 base\nmochi: t5 xxl\ncosmos: old t5 xxl\nlumina2: gemma 2 2B\nwan: umt5 xxl\n hidream: llama-3.1 (Recommend) or t5"
+    DESCRIPTION = "[Recipes]\n\nstable_diffusion: clip-l\nstable_cascade: clip-g\nsd3: t5 xxl/ clip-g / clip-l\nstable_audio: t5 base\nmochi: t5 xxl\ncosmos: old t5 xxl\nlumina2: gemma 2 2B\nwan: umt5 xxl\n hidream: llama-3.1 (Recommend) or t5\nomnigen2: qwen vl 2.5 3B"
 
     def load_clip(self, clip_name, type="stable_diffusion", device="default"):
         clip_type = getattr(comfy.sd.CLIPType, type.upper(), comfy.sd.CLIPType.STABLE_DIFFUSION)
@@ -948,7 +970,7 @@ class DualCLIPLoader:
     def INPUT_TYPES(s):
         return {"required": { "clip_name1": (folder_paths.get_filename_list("text_encoders"), ),
                               "clip_name2": (folder_paths.get_filename_list("text_encoders"), ),
-                              "type": (["sdxl", "sd3", "flux", "hunyuan_video", "hidream"], ),
+                              "type": (["sdxl", "sd3", "flux", "hunyuan_video", "hidream", "hunyuan_image", "hunyuan_video_15", "kandinsky5", "kandinsky5_image"], ),
                               },
                 "optional": {
                               "device": (["default", "cpu"], {"advanced": True}),
@@ -958,7 +980,7 @@ class DualCLIPLoader:
 
     CATEGORY = "advanced/loaders"
 
-    DESCRIPTION = "[Recipes]\n\nsdxl: clip-l, clip-g\nsd3: clip-l, clip-g / clip-l, t5 / clip-g, t5\nflux: clip-l, t5\nhidream: at least one of t5 or llama, recommended t5 and llama"
+    DESCRIPTION = "[Recipes]\n\nsdxl: clip-l, clip-g\nsd3: clip-l, clip-g / clip-l, t5 / clip-g, t5\nflux: clip-l, t5\nhidream: at least one of t5 or llama, recommended t5 and llama\nhunyuan_image: qwen2.5vl 7b and byt5 small"
 
     def load_clip(self, clip_name1, clip_name2, type, device="default"):
         clip_type = getattr(comfy.sd.CLIPType, type.upper(), comfy.sd.CLIPType.STABLE_DIFFUSION)
@@ -1224,12 +1246,12 @@ class RepeatLatentBatch:
         s = samples.copy()
         s_in = samples["samples"]
 
-        s["samples"] = s_in.repeat((amount, 1,1,1))
+        s["samples"] = s_in.repeat((amount,) + ((1,) * (s_in.ndim - 1)))
         if "noise_mask" in samples and samples["noise_mask"].shape[0] > 1:
             masks = samples["noise_mask"]
             if masks.shape[0] < s_in.shape[0]:
-                masks = masks.repeat(math.ceil(s_in.shape[0] / masks.shape[0]), 1, 1, 1)[:s_in.shape[0]]
-            s["noise_mask"] = samples["noise_mask"].repeat((amount, 1,1,1))
+                masks = masks.repeat((math.ceil(s_in.shape[0] / masks.shape[0]),) + ((1,) * (masks.ndim - 1)))[:s_in.shape[0]]
+            s["noise_mask"] = samples["noise_mask"].repeat((amount,) + ((1,) * (samples["noise_mask"].ndim - 1)))
         if "batch_index" in s:
             offset = max(s["batch_index"]) - min(s["batch_index"]) + 1
             s["batch_index"] = s["batch_index"] + [x + (i * offset) for i in range(1, amount) for x in s["batch_index"]]
@@ -1843,6 +1865,11 @@ class ImageBatch:
     CATEGORY = "image"
 
     def batch(self, image1, image2):
+        if image1.shape[-1] != image2.shape[-1]:
+            if image1.shape[-1] > image2.shape[-1]:
+                image2 = torch.nn.functional.pad(image2, (0,1), mode='constant', value=1.0)
+            else:
+                image1 = torch.nn.functional.pad(image1, (0,1), mode='constant', value=1.0)
         if image1.shape[1:] != image2.shape[1:]:
             image2 = comfy.utils.common_upscale(image2.movedim(-1,1), image1.shape[2], image1.shape[1], "bilinear", "center").movedim(1,-1)
         s = torch.cat((image1, image2), dim=0)
@@ -2018,7 +2045,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "DiffControlNetLoader": "Load ControlNet Model (diff)",
     "StyleModelLoader": "Load Style Model",
     "CLIPVisionLoader": "Load CLIP Vision",
-    "UpscaleModelLoader": "Load Upscale Model",
     "UNETLoader": "Load Diffusion Model",
     # Conditioning
     "CLIPVisionEncode": "CLIP Vision Encode",
@@ -2056,16 +2082,17 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LoadImageOutput": "Load Image (from Outputs)",
     "ImageScale": "Upscale Image",
     "ImageScaleBy": "Upscale Image By",
-    "ImageUpscaleWithModel": "Upscale Image (using Model)",
     "ImageInvert": "Invert Image",
     "ImagePadForOutpaint": "Pad Image for Outpainting",
     "ImageBatch": "Batch Images",
     "ImageCrop": "Image Crop",
+    "ImageStitch": "Image Stitch",
     "ImageBlend": "Image Blend",
     "ImageBlur": "Image Blur",
     "ImageQuantize": "Image Quantize",
     "ImageSharpen": "Image Sharpen",
     "ImageScaleToTotalPixels": "Scale Image to Total Pixels",
+    "GetImageSize": "Get Image Size",
     # _for_testing
     "VAEDecodeTiled": "VAE Decode (Tiled)",
     "VAEEncodeTiled": "VAE Encode (Tiled)",
@@ -2099,8 +2126,8 @@ def get_module_name(module_path: str) -> str:
     return base_path
 
 
-def load_custom_node(module_path: str, ignore=set(), module_parent="custom_nodes") -> bool:
-    module_name = get_module_name(module_path)  # 获取模块名，就是包含节点定义的文件名或路径名
+async def load_custom_node(module_path: str, ignore=set(), module_parent="custom_nodes") -> bool:
+    module_name = get_module_name(module_path)
     if os.path.isfile(module_path):
         sp = os.path.splitext(module_path)
         module_name = sp[0]
@@ -2123,28 +2150,78 @@ def load_custom_node(module_path: str, ignore=set(), module_parent="custom_nodes
 
         LOADED_MODULE_DIRS[module_name] = os.path.abspath(module_dir)  # 将模块的目录添加到LOADED_MODULE_DIRS中
 
-        if hasattr(module, "WEB_DIRECTORY") and getattr(module, "WEB_DIRECTORY") is not None:  # 如果模块有WEB_DIRECTORY属性
-            web_dir = os.path.abspath(os.path.join(module_dir, getattr(module, "WEB_DIRECTORY")))  # 获取web_dir的路径
-            if os.path.isdir(web_dir):  # 如果web_dir是目录
-                EXTENSION_WEB_DIRS[module_name] = web_dir  # 将web_dir添加到EXTENSION_WEB_DIRS中
+        try:
+            from comfy_config import config_parser
 
-        if hasattr(module, "NODE_CLASS_MAPPINGS") and getattr(module, "NODE_CLASS_MAPPINGS") is not None:  # 如果模块有NODE_CLASS_MAPPINGS属性
-            for name, node_cls in module.NODE_CLASS_MAPPINGS.items():  # 遍历NODE_CLASS_MAPPINGS中的每个节点
-                if name not in ignore:  # 如果节点名不在忽略列表中
-                    NODE_CLASS_MAPPINGS[name] = node_cls  # 将节点添加到NODE_CLASS_MAPPINGS中
-                    node_cls.RELATIVE_PYTHON_MODULE = "{}.{}".format(module_parent, get_module_name(module_path))  # 设置节点所在的python模块
-            if hasattr(module, "NODE_DISPLAY_NAME_MAPPINGS") and getattr(module, "NODE_DISPLAY_NAME_MAPPINGS") is not None:  # 如果模块有NODE_DISPLAY_NAME_MAPPINGS属性
-                NODE_DISPLAY_NAME_MAPPINGS.update(module.NODE_DISPLAY_NAME_MAPPINGS)  # 更新NODE_DISPLAY_NAME_MAPPINGS
-            return True  # 返回True表示加载成功
+            project_config = config_parser.extract_node_configuration(module_path)
+
+            web_dir_name = project_config.tool_comfy.web
+
+            if web_dir_name:
+                web_dir_path = os.path.join(module_path, web_dir_name)
+
+                if os.path.isdir(web_dir_path):
+                    project_name = project_config.project.name
+
+                    EXTENSION_WEB_DIRS[project_name] = web_dir_path
+
+                    logging.info("Automatically register web folder {} for {}".format(web_dir_name, project_name))
+        except Exception as e:
+            logging.warning(f"Unable to parse pyproject.toml due to lack dependency pydantic-settings, please run 'pip install -r requirements.txt': {e}")
+
+        if hasattr(module, "WEB_DIRECTORY") and getattr(module, "WEB_DIRECTORY") is not None:
+            web_dir = os.path.abspath(os.path.join(module_dir, getattr(module, "WEB_DIRECTORY")))
+            if os.path.isdir(web_dir):
+                EXTENSION_WEB_DIRS[module_name] = web_dir
+
+        # V1 node definition
+        if hasattr(module, "NODE_CLASS_MAPPINGS") and getattr(module, "NODE_CLASS_MAPPINGS") is not None:
+            for name, node_cls in module.NODE_CLASS_MAPPINGS.items():
+                if name not in ignore:
+                    NODE_CLASS_MAPPINGS[name] = node_cls
+                    node_cls.RELATIVE_PYTHON_MODULE = "{}.{}".format(module_parent, get_module_name(module_path))
+            if hasattr(module, "NODE_DISPLAY_NAME_MAPPINGS") and getattr(module, "NODE_DISPLAY_NAME_MAPPINGS") is not None:
+                NODE_DISPLAY_NAME_MAPPINGS.update(module.NODE_DISPLAY_NAME_MAPPINGS)
+            return True
+        # V3 Extension Definition
+        elif hasattr(module, "comfy_entrypoint"):
+            entrypoint = getattr(module, "comfy_entrypoint")
+            if not callable(entrypoint):
+                logging.warning(f"comfy_entrypoint in {module_path} is not callable, skipping.")
+                return False
+            try:
+                if inspect.iscoroutinefunction(entrypoint):
+                    extension = await entrypoint()
+                else:
+                    extension = entrypoint()
+                if not isinstance(extension, ComfyExtension):
+                    logging.warning(f"comfy_entrypoint in {module_path} did not return a ComfyExtension, skipping.")
+                    return False
+                node_list = await extension.get_node_list()
+                if not isinstance(node_list, list):
+                    logging.warning(f"comfy_entrypoint in {module_path} did not return a list of nodes, skipping.")
+                    return False
+                for node_cls in node_list:
+                    node_cls: io.ComfyNode
+                    schema = node_cls.GET_SCHEMA()
+                    if schema.node_id not in ignore:
+                        NODE_CLASS_MAPPINGS[schema.node_id] = node_cls
+                        node_cls.RELATIVE_PYTHON_MODULE = "{}.{}".format(module_parent, get_module_name(module_path))
+                    if schema.display_name is not None:
+                        NODE_DISPLAY_NAME_MAPPINGS[schema.node_id] = schema.display_name
+                return True
+            except Exception as e:
+                logging.warning(f"Error while calling comfy_entrypoint in {module_path}: {e}")
+                return False
         else:
-            logging.warning(f"Skip {module_path} module for custom nodes due to the lack of NODE_CLASS_MAPPINGS.")
+            logging.warning(f"Skip {module_path} module for custom nodes due to the lack of NODE_CLASS_MAPPINGS or NODES_LIST (need one).")
             return False
     except Exception as e:
         logging.warning(traceback.format_exc())
         logging.warning(f"Cannot import {module_path} module for custom nodes: {e}")
         return False
 
-def init_external_custom_nodes():
+async def init_external_custom_nodes():
     """
     Initializes the external custom nodes.
 
@@ -2164,10 +2241,19 @@ def init_external_custom_nodes():
 
         for possible_module in possible_modules:
             module_path = os.path.join(custom_node_path, possible_module)
-            if os.path.isfile(module_path) and os.path.splitext(module_path)[1] != ".py": continue  # 如果module_path是文件且不是.py文件，则跳过
-            if module_path.endswith(".disabled"): continue  # 如果module_path以.disabled结尾，则跳过
-            time_before = time.perf_counter()  # 记录开始时间
-            success = load_custom_node(module_path, base_node_names, module_parent="custom_nodes")  # 加载节点
+            if os.path.isfile(module_path) and os.path.splitext(module_path)[1] != ".py": continue
+            if module_path.endswith(".disabled"): continue
+            if args.disable_all_custom_nodes and possible_module not in args.whitelist_custom_nodes:
+                logging.info(f"Skipping {possible_module} due to disable_all_custom_nodes and whitelist_custom_nodes")
+                continue
+
+            if args.enable_manager:
+                if comfyui_manager.should_be_disabled(module_path):
+                    logging.info(f"Blocked by policy: {module_path}")
+                    continue
+
+            time_before = time.perf_counter()
+            success = await load_custom_node(module_path, base_node_names, module_parent="custom_nodes")
             node_import_times.append((time.perf_counter() - time_before, module_path, success))
 
     if len(node_import_times) > 0:
@@ -2180,7 +2266,7 @@ def init_external_custom_nodes():
             logging.info("{:6.1f} seconds{}: {}".format(n[0], import_message, n[1]))
         logging.info("")
 
-def init_builtin_extra_nodes():
+async def init_builtin_extra_nodes():
     """
     Initializes the built-in extra nodes in ComfyUI.
 
@@ -2210,6 +2296,8 @@ def init_builtin_extra_nodes():
         "nodes_model_downscale.py",
         "nodes_images.py",
         "nodes_video_model.py",
+        "nodes_train.py",
+        "nodes_dataset.py",
         "nodes_sag.py",
         "nodes_perpneg.py",
         "nodes_stable3d.py",
@@ -2232,6 +2320,7 @@ def init_builtin_extra_nodes():
         "nodes_gits.py",
         "nodes_controlnet.py",
         "nodes_hunyuan.py",
+        "nodes_eps.py",
         "nodes_flux.py",
         "nodes_lora_extract.py",
         "nodes_torch_compile.py",
@@ -2257,17 +2346,30 @@ def init_builtin_extra_nodes():
         "nodes_ace.py",
         "nodes_string.py",
         "nodes_camera_trajectory.py",
+        "nodes_edit_model.py",
+        "nodes_tcfg.py",
+        "nodes_context_windows.py",
+        "nodes_qwen.py",
+        "nodes_chroma_radiance.py",
+        "nodes_model_patch.py",
+        "nodes_easycache.py",
+        "nodes_audio_encoder.py",
+        "nodes_rope.py",
+        "nodes_logic.py",
+        "nodes_nop.py",
+        "nodes_kandinsky5.py",
+        "nodes_wanmove.py",
     ]
 
     import_failed = []  # 用于存储加载失败的节点
     for node_file in extras_files:
-        if not load_custom_node(os.path.join(extras_dir, node_file), module_parent="comfy_extras"):  # 加载comfy_extras文件夹中的节点
-            import_failed.append(node_file)  # 如果加载失败，则将节点文件名添加到import_failed列表中
+        if not await load_custom_node(os.path.join(extras_dir, node_file), module_parent="comfy_extras"):
+            import_failed.append(node_file)
 
     return import_failed
 
 
-def init_builtin_api_nodes():
+async def init_builtin_api_nodes():
     api_nodes_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "comfy_api_nodes")
     api_nodes_files = [
         "nodes_ideogram.py",
@@ -2276,37 +2378,52 @@ def init_builtin_api_nodes():
         "nodes_veo2.py",
         "nodes_kling.py",
         "nodes_bfl.py",
+        "nodes_bytedance.py",
+        "nodes_ltxv.py",
         "nodes_luma.py",
         "nodes_recraft.py",
         "nodes_pixverse.py",
         "nodes_stability.py",
-        "nodes_pika.py",
         "nodes_runway.py",
+        "nodes_sora.py",
+        "nodes_topaz.py",
         "nodes_tripo.py",
+        "nodes_moonvalley.py",
         "nodes_rodin.py",
         "nodes_gemini.py",
+        "nodes_vidu.py",
+        "nodes_wan.py",
     ]
 
-    if not load_custom_node(os.path.join(api_nodes_dir, "canary.py"), module_parent="comfy_api_nodes"):
+    if not await load_custom_node(os.path.join(api_nodes_dir, "canary.py"), module_parent="comfy_api_nodes"):
         return api_nodes_files
 
     import_failed = []
     for node_file in api_nodes_files:
-        if not load_custom_node(os.path.join(api_nodes_dir, node_file), module_parent="comfy_api_nodes"):  # 加载comfy_api_nodes文件夹中的节点
-            import_failed.append(node_file)  # 如果加载失败，则将节点文件名添加到import_failed列表中
+        if not await load_custom_node(os.path.join(api_nodes_dir, node_file), module_parent="comfy_api_nodes"):
+            import_failed.append(node_file)
 
     return import_failed
 
+async def init_public_apis():
+    register_versions([
+        ComfyAPIWithVersion(
+            version=getattr(v, "VERSION"),
+            api_class=v
+        ) for v in supported_versions
+    ])
 
-def init_extra_nodes(init_custom_nodes=True, init_api_nodes=True):
-    import_failed = init_builtin_extra_nodes()  # 动态加载内置的extra节点，返回加载失败的节点
+async def init_extra_nodes(init_custom_nodes=True, init_api_nodes=True):
+    await init_public_apis()
+
+    import_failed = await init_builtin_extra_nodes()
 
     import_failed_api = []
     if init_api_nodes:
-        import_failed_api = init_builtin_api_nodes()
+        import_failed_api = await init_builtin_api_nodes()
 
     if init_custom_nodes:
-        init_external_custom_nodes()  # 动态加载外部自定义节点
+        await init_external_custom_nodes()
     else:
         logging.info("Skipping loading of custom nodes")
 
