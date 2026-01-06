@@ -14,21 +14,21 @@ from comfy_api import feature_flags
 
 PreviewImageTuple = Tuple[str, Image.Image, Optional[int]]
 
-class NodeState(Enum):
+class NodeState(Enum):  # 节点状态
     Pending = "pending"
     Running = "running"
     Finished = "finished"
     Error = "error"
 
 
-class NodeProgressState(TypedDict):
+class NodeProgressState(TypedDict):  # 节点进度状态
     """
     A class to represent the state of a node's progress.
     """
 
-    state: NodeState
-    value: float
-    max: float
+    state: NodeState # 节点状态
+    value: float # 节点进度
+    max: float # 节点进度最大值
 
 
 class ProgressHandler(ABC):
@@ -164,7 +164,7 @@ class WebUIProgressHandler(ProgressHandler):
         if self.server_instance is None:
             return
 
-        # Only send info for non-pending nodes
+        # Only send info for non-pending nodes 只发送非pending节点的信息
         active_nodes = {
             node_id: {
                 "value": state["value"],

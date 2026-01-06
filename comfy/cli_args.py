@@ -33,7 +33,7 @@ class EnumAction(argparse.Action):  # 用于处理枚举类型的自定义类，
         setattr(namespace, self.dest, value)
 
 
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser()  # 创建一个ArgumentParser对象，用于解析命令行参数
 
 parser.add_argument("--listen", type=str, default="127.0.0.1", metavar="IP", nargs="?", const="0.0.0.0,::", help="Specify the IP address to listen on (default: 127.0.0.1). You can give a list of ip addresses by separating them with a comma like: 127.2.2.2,127.3.3.3 If --listen is provided without an argument, it defaults to 0.0.0.0,:: (listens on all ipv4 and ipv6)")
 parser.add_argument("--port", type=int, default=8188, help="Set the listen port.")
@@ -51,16 +51,16 @@ parser.add_argument("--auto-launch", action="store_true", help="Automatically la
 parser.add_argument("--disable-auto-launch", action="store_true", help="Disable auto launching the browser.")
 parser.add_argument("--cuda-device", type=int, default=None, metavar="DEVICE_ID", help="Set the id of the cuda device this instance will use. All other devices will not be visible.")
 parser.add_argument("--default-device", type=int, default=None, metavar="DEFAULT_DEVICE_ID", help="Set the id of the default device, all other devices will stay visible.")
-cm_group = parser.add_mutually_exclusive_group()
+cm_group = parser.add_mutually_exclusive_group()  # 添加一个互斥组，用于添加cuda-malloc和disable-cuda-malloc参数
 cm_group.add_argument("--cuda-malloc", action="store_true", help="Enable cudaMallocAsync (enabled by default for torch 2.0 and up).")
 cm_group.add_argument("--disable-cuda-malloc", action="store_true", help="Disable cudaMallocAsync.")
 
 
-fp_group = parser.add_mutually_exclusive_group()
+fp_group = parser.add_mutually_exclusive_group()  # 添加一个互斥组，用于添加force-fp32和force-fp16参数
 fp_group.add_argument("--force-fp32", action="store_true", help="Force fp32 (If this makes your GPU work better please report it).")
 fp_group.add_argument("--force-fp16", action="store_true", help="Force fp16.")
 
-fpunet_group = parser.add_mutually_exclusive_group()
+fpunet_group = parser.add_mutually_exclusive_group()  # 添加一个互斥组，用于添加fp32-unet和fp64-unet参数
 fpunet_group.add_argument("--fp32-unet", action="store_true", help="Run the diffusion model in fp32.")
 fpunet_group.add_argument("--fp64-unet", action="store_true", help="Run the diffusion model in fp64.")
 fpunet_group.add_argument("--bf16-unet", action="store_true", help="Run the diffusion model in bf16.")
@@ -69,14 +69,14 @@ fpunet_group.add_argument("--fp8_e4m3fn-unet", action="store_true", help="Store 
 fpunet_group.add_argument("--fp8_e5m2-unet", action="store_true", help="Store unet weights in fp8_e5m2.")
 fpunet_group.add_argument("--fp8_e8m0fnu-unet", action="store_true", help="Store unet weights in fp8_e8m0fnu.")
 
-fpvae_group = parser.add_mutually_exclusive_group()
+fpvae_group = parser.add_mutually_exclusive_group()  # 添加一个互斥组，用于添加fp16-vae和fp32-vae参数
 fpvae_group.add_argument("--fp16-vae", action="store_true", help="Run the VAE in fp16, might cause black images.")
 fpvae_group.add_argument("--fp32-vae", action="store_true", help="Run the VAE in full precision fp32.")
 fpvae_group.add_argument("--bf16-vae", action="store_true", help="Run the VAE in bf16.")
 
 parser.add_argument("--cpu-vae", action="store_true", help="Run the VAE on the CPU.")
 
-fpte_group = parser.add_mutually_exclusive_group()
+fpte_group = parser.add_mutually_exclusive_group()  # 添加一个互斥组，用于添加fp8-e4m3fn-text-enc和fp8-e5m2-text-enc参数
 fpte_group.add_argument("--fp8_e4m3fn-text-enc", action="store_true", help="Store text encoder weights in fp8 (e4m3fn variant).")
 fpte_group.add_argument("--fp8_e5m2-text-enc", action="store_true", help="Store text encoder weights in fp8 (e5m2 variant).")
 fpte_group.add_argument("--fp16-text-enc", action="store_true", help="Store text encoder weights in fp16.")
@@ -108,7 +108,7 @@ parser.add_argument("--preview-method", type=LatentPreviewMethod, default=Latent
 
 parser.add_argument("--preview-size", type=int, default=512, help="Sets the maximum preview size for sampler nodes.")
 
-cache_group = parser.add_mutually_exclusive_group()
+cache_group = parser.add_mutually_exclusive_group()  # 添加一个互斥组，用于添加cache-classic和cache-lru参数
 cache_group.add_argument("--cache-classic", action="store_true", help="Use the old style (aggressive) caching.")
 cache_group.add_argument("--cache-lru", type=int, default=0, help="Use LRU caching with a maximum of N node results cached. May use more RAM/VRAM.")
 cache_group.add_argument("--cache-none", action="store_true", help="Reduced RAM/VRAM usage at the expense of executing every node for each run.")

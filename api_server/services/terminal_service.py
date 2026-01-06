@@ -9,7 +9,7 @@ class TerminalService:
         self.cols = None
         self.rows = None
         self.subscriptions = set()
-        on_flush(self.send_messages)
+        on_flush(self.send_messages)  # 注册日志刷新回调函数
 
     def get_terminal_size(self):
         try:
@@ -57,4 +57,4 @@ class TerminalService:
                 self.unsubscribe(client_id)
                 continue
 
-            self.server.send_sync("logs", {"entries": entries, "size": new_size}, client_id)
+            self.server.send_sync("logs", {"entries": entries, "size": new_size}, client_id)  # 将日志发送给客户端

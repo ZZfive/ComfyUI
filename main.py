@@ -27,7 +27,7 @@ if os.name == "nt":
     os.environ['MIMALLOC_PURGE_DELAY'] = '0'
 
 if __name__ == "__main__":
-    os.environ['TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL'] = '1'
+    os.environ['TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL'] = '1'  # 
     if args.default_device is not None:
         default_dev = args.default_device
         devices = list(range(32))
@@ -63,7 +63,7 @@ def handle_comfyui_manager_unavailable():
 
 
 if args.enable_manager:
-    if importlib.util.find_spec("comfyui_manager"):
+    if importlib.util.find_spec("comfyui_manager"):  # 检查comfyui_manager模块是否存在
         import comfyui_manager
 
         if not comfyui_manager.__file__ or not comfyui_manager.__file__.endswith('__init__.py'):
@@ -296,7 +296,7 @@ def hijack_progress(server_instance):
         progress = {"value": value, "max": total, "prompt_id": prompt_id, "node": node_id}
         get_progress_state().update_progress(node_id, value, total, preview_image)
 
-        server_instance.send_sync("progress", progress, server_instance.client_id)  # 将信息信息发送给客户端，其可以更新进度
+        server_instance.send_sync("progress", progress, server_instance.client_id)  # 将信息发送给客户端，用于更新进度
         if preview_image is not None:
             # Only send old method if client doesn't support preview metadata
             if not feature_flags.supports_feature(
@@ -319,7 +319,7 @@ def cleanup_temp():  # 清理临时文件夹
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def setup_database():
+def setup_database():  # 设置数据库
     try:
         from app.database.db import init_db, dependencies_available
         if dependencies_available():
@@ -369,7 +369,7 @@ def start_comfyui(asyncio_loop=None):
 
     threading.Thread(target=prompt_worker, daemon=True, args=(prompt_server.prompt_queue, prompt_server,)).start()  # 以守护子线程的方式启动任务处理函数prompt_worker，其中有while True，此子线程会一直存在，只有当主线程结束时才会终止
 
-    if args.quick_test_for_ci:
+    if args.quick_test_for_ci: # 如果设置了快速测试，则退出
         exit(0)
 
     os.makedirs(folder_paths.get_temp_directory(), exist_ok=True)

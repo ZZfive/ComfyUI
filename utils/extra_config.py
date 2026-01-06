@@ -20,8 +20,8 @@ def load_extra_path_config(yaml_path):
         is_default = False
         if "is_default" in conf:
             is_default = conf.pop("is_default")
-        for x in conf:
-            for y in conf[x].split("\n"):
+        for x in conf:  # 遍历一个配置模块下的所有数据类型
+            for y in conf[x].split("\n"):  # 一个数据类型可能有多个配置
                 if len(y) == 0:
                     continue
                 full_path = y
