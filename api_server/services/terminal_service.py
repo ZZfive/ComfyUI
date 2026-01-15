@@ -13,7 +13,7 @@ class TerminalService:
 
     def get_terminal_size(self):
         try:
-            size = os.get_terminal_size()
+            size = os.get_terminal_size()  # 获取终端大小
             return (size.columns, size.lines)
         except OSError:
             try:
@@ -45,7 +45,7 @@ class TerminalService:
     def unsubscribe(self, client_id):
         self.subscriptions.discard(client_id)
 
-    def send_messages(self, entries):
+    def send_messages(self, entries):  # 发送日志消息给客户端
         if not len(entries) or not len(self.subscriptions):
             return
 

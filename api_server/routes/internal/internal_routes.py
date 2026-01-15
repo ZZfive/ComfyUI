@@ -23,7 +23,7 @@ class InternalRoutes:
         async def get_logs(request):
             return web.json_response("".join([(l["t"] + " - " + l["m"]) for l in app.logger.get_logs()]))
 
-        @self.routes.get('/logs/raw')  # 获取原始日志
+        @self.routes.get('/logs/raw')  # 获取日志原始数据
         async def get_raw_logs(request):
             self.terminal_service.update_size()
             return web.json_response({

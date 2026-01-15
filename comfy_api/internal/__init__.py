@@ -35,7 +35,7 @@ def first_real_override(cls: type, name: str, *, base: type=None) -> Optional[Ca
     return None
 
 
-class _ComfyNodeInternal:
+class _ComfyNodeInternal:  # 所有V3-based APIs继承自ComfyNode的类
     """Class that all V3-based APIs inherit from for ComfyNode.
 
     This is intended to only be referenced within execution.py, as it has to handle all V3 APIs going forward."""

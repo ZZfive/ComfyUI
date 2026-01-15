@@ -61,7 +61,7 @@ def to_hashable(obj):  # 将任意python对象递归地转换为可哈希的形�
         return frozenset(zip(itertools.count(), [to_hashable(i) for i in obj]))  # zip函数将两个可迭代对象合并成一个，itertools.count()生成一个无限递增的计数器
     else:
         # TODO - Support other objects like tensors?
-        return Unhashable()
+        return Unhashable()  # 返回NaN，确保不会命中缓存
 
 class CacheKeySetID(CacheKeySet):
     def __init__(self, dynprompt: DynamicPrompt, node_ids, is_changed_cache):
@@ -75,8 +75,8 @@ class CacheKeySetID(CacheKeySet):
             if not self.dynprompt.has_node(node_id):  # 如果节点ID不存在，则跳过
                 continue
             node = self.dynprompt.get_node(node_id)  # 获取节点信息
-            self.keys[node_id] = (node_id, node["class_type"])  # 将节点ID和节点类型作为键值对存储在keys中
-            self.subcache_keys[node_id] = (node_id, node["class_type"])  # 将节点ID和节点类型作为键值对存储在subcache_keys中
+            self.keys[node_id] = (node_id, node["class_type"])  # 将节点ID和节点类型组成的元组对存储在keys中
+            self.subcache_keys[node_id] = (node_id, node["class_type"])  # 将节点ID和节点类型组成的元组对存储在subcache_keys中
 
 class CacheKeySetInputSignature(CacheKeySet):  # 创建基于节点输入结构和内容的缓存key
     def __init__(self, dynprompt: DynamicPrompt, node_ids, is_changed_cache):
@@ -84,10 +84,10 @@ class CacheKeySetInputSignature(CacheKeySet):  # 创建基于节点输入结构�
         self.dynprompt = dynprompt
         self.is_changed_cache = is_changed_cache
 
-    def include_node_id_in_input(self) -> bool:  # 决定生成缓存键时是否默认模板节点ID
-        return False  # 表示默认不考虑节点ID，只依赖于节点的输入内容；相同输入的节点可以共享缓存
+    def include_node_id_in_input(self) -> bool:  # 决定生成缓存键时是否考虑节点ID
+        return False  # 表示默认不考虑节点ID，只依赖于节点的输入内容；相同输入的节点可以共享缓存，不强制要求节点ID必须一样
 
-    async def add_keys(self, node_ids):
+    async def add_keys(self, node_ids):  # 基于当前工作流信息，为每个节点生成唯一的缓存key
         for node_id in node_ids:
             if node_id in self.keys:  # 如果当前节点ID已经在keys中，则跳过
                 continue
@@ -99,30 +99,30 @@ class CacheKeySetInputSignature(CacheKeySet):  # 创建基于节点输入结构�
 
     async def get_node_signature(self, dynprompt, node_id):
         signature = []
-        ancestors, order_mapping = self.get_ordered_ancestry(dynprompt, node_id)
-        signature.append(await self.get_immediate_node_signature(dynprompt, node_id, order_mapping))
+        ancestors, order_mapping = self.get_ordered_ancestry(dynprompt, node_id)  # 获取所有祖先节点
+        signature.append(await self.get_immediate_node_signature(dynprompt, node_id, order_mapping))  # 计算当前节点的即时签名
         for ancestor_id in ancestors:
-            signature.append(await self.get_immediate_node_signature(dynprompt, ancestor_id, order_mapping))
-        return to_hashable(signature)
+            signature.append(await self.get_immediate_node_signature(dynprompt, ancestor_id, order_mapping))  # 计算所有祖先节点的即时签名
+        return to_hashable(signature)  # 将签名转换为可哈希的形式
 
     async def get_immediate_node_signature(self, dynprompt, node_id, ancestor_order_mapping):
         if not dynprompt.has_node(node_id):
             # This node doesn't exist -- we can't cache it.
             return [float("NaN")]
         node = dynprompt.get_node(node_id)
-        class_type = node["class_type"]
-        class_def = nodes.NODE_CLASS_MAPPINGS[class_type]
-        signature = [class_type, await self.is_changed_cache.get(node_id)]
+        class_type = node["class_type"]  # 获取当前节点的类型
+        class_def = nodes.NODE_CLASS_MAPPINGS[class_type]  # 获取当前节点的类定义
+        signature = [class_type, await self.is_changed_cache.get(node_id)]  # 将当前节点的类型和是否改变缓存的结果添加到签名中
         if self.include_node_id_in_input() or (hasattr(class_def, "NOT_IDEMPOTENT") and class_def.NOT_IDEMPOTENT) or include_unique_id_in_input(class_type):
             signature.append(node_id)
-        inputs = node["inputs"]
+        inputs = node["inputs"]  # 获取当前节点的输入
         for key in sorted(inputs.keys()):
             if is_link(inputs[key]):
                 (ancestor_id, ancestor_socket) = inputs[key]
                 ancestor_index = ancestor_order_mapping[ancestor_id]
                 signature.append((key,("ANCESTOR", ancestor_index, ancestor_socket)))
             else:
-                signature.append((key, inputs[key]))  # 将输入的键和输入的值添加到缓存键中
+                signature.append((key, inputs[key]))
         return signature
 
     # This function returns a list of all ancestors of the given node. The order of the list is
@@ -158,7 +158,7 @@ class BasicCache:
     async def set_prompt(self, dynprompt, node_ids, is_changed_cache):
         self.dynprompt = dynprompt
         self.cache_key_set = self.key_class(dynprompt, node_ids, is_changed_cache)
-        await self.cache_key_set.add_keys(node_ids)
+        await self.cache_key_set.add_keys(node_ids)  # 基于当前工作流信息和设置的缓存key类，为每个节点生成唯一的缓存key
         self.is_changed_cache = is_changed_cache
         self.initialized = True
 

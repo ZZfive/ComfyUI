@@ -64,7 +64,7 @@ async def send_socket_catch_exception(function, message):
 _deprecated_paths_warned = set()
 
 @web.middleware
-async def deprecation_warning(request: web.Request, handler):
+async def deprecation_warning(request: web.Request, handler):  # 废弃前端API路径警告中间件
     """Middleware to warn about deprecated frontend API paths"""
     path = request.path
 
@@ -87,7 +87,7 @@ async def compress_body(request: web.Request, handler):  # 压缩HTTP响应体�
     response: web.Response = await handler(request)
     if not isinstance(response, web.Response):  # 如果响应不是web.Response，直接返回
         return response
-    if response.content_type not in ["application/json", "text/plain"]:  # 只压缩JSON和纯文本
+    if response.content_type not in ["application/json", "text/plain"]:  # 只压缩JSON和纯文本，避免对图片等压缩
         return response
     if response.body and "gzip" in accept_encoding:
         response.enable_compression()  # 启动压缩
@@ -111,7 +111,7 @@ def create_cors_middleware(allowed_origin: str):  # 返回一个跨资源共享�
 
     return cors_middleware
 
-def is_loopback(host):
+def is_loopback(host):  # 检查主机域名是否为本地回环地址
     if host is None:
         return False
     try:
@@ -137,7 +137,7 @@ def is_loopback(host):
     return loopback
 
 
-def create_origin_only_middleware():
+def create_origin_only_middleware():  # 只允许同源访问中间件
     @web.middleware
     async def origin_only_middleware(request: web.Request, handler):
         #this code is used to prevent the case where a random website can queue comfy workflows by making a POST to 127.0.0.1 which browsers don't prevent for some dumb reason.
@@ -176,7 +176,7 @@ def create_origin_only_middleware():
 
 def create_block_external_middleware():
     @web.middleware
-    async def block_external_middleware(request: web.Request, handler):
+    async def block_external_middleware(request: web.Request, handler):  # 防止资源注入和数据外泄，用于关闭api节点
         if request.method == "OPTIONS":
             # Pre-flight request. Reply successfully:
             response = web.Response()
@@ -225,16 +225,16 @@ class PromptServer():
             middlewares.append(comfyui_manager.create_middleware())
 
         max_upload_size = round(args.max_upload_size * 1024 * 1024)
-        self.app = web.Application(client_max_size=max_upload_size, middlewares=middlewares)
-        self.sockets = dict()
-        self.sockets_metadata = dict()
+        self.app = web.Application(client_max_size=max_upload_size, middlewares=middlewares)  # 创建web应用实例，并设置最大上传大小和中间件
+        self.sockets = dict()  # 用于存储WebSocket连接
+        self.sockets_metadata = dict()  # 用于存储WebSocket连接的元数据
         self.web_root = (
             FrontendManager.init_frontend(args.front_end_version)  # 返回comfyui-frontend-package这个库的static文件夹路径
             if args.front_end_root is None
             else args.front_end_root
         )  # 前端的根目录
         logging.info(f"[Prompt Server] web root: {self.web_root}")
-        routes = web.RouteTableDef()  # 初始化路由
+        routes = web.RouteTableDef()  # 初始化路由表
         self.routes = routes
         self.last_node_id = None  # 用于记录当前处理任务执行节点信息
         self.client_id = None  # 用于记录当前处理任务对应的客户端ID
@@ -470,7 +470,7 @@ class PromptServer():
             return image_upload(post, image_save_function)
 
         @routes.get("/view")
-        async def view_image(request):
+        async def view_image(request):  # 获取图片信息
             if "filename" in request.rel_url.query:
                 filename = request.rel_url.query["filename"]
                 filename, output_dir = folder_paths.annotated_filepath(filename)
@@ -597,7 +597,7 @@ class PromptServer():
             return web.json_response(dt["__metadata__"])
 
         @routes.get("/system_stats")
-        async def system_stats(request):
+        async def system_stats(request):  # 获取系统统计信息
             device = comfy.model_management.get_torch_device()
             device_name = comfy.model_management.get_torch_device_name(device)
             cpu_device = comfy.model_management.torch.device("cpu")
@@ -638,14 +638,14 @@ class PromptServer():
             return web.json_response(system_stats)
 
         @routes.get("/features")
-        async def get_features(request):
+        async def get_features(request):  # 获取服务器功能特性
             return web.json_response(feature_flags.get_server_features())
 
         @routes.get("/prompt")
         async def get_prompt(request):  # 获取当前队列信息接口
             return web.json_response(self.get_queue_info())
 
-        def node_info(node_class):  # 获取节点信息接口
+        def node_info(node_class):  # 获取节点信息
             obj_class = nodes.NODE_CLASS_MAPPINGS[node_class]
             if issubclass(obj_class, _ComfyNodeInternal):
                 return obj_class.GET_NODE_INFO_V1()
@@ -701,7 +701,7 @@ class PromptServer():
             return web.json_response(out)
 
         @routes.get("/api/jobs")
-        async def get_jobs(request):
+        async def get_jobs(request):  # 按设置的过滤条件、排序方式获取对应的任务
             """List all jobs with filtering, sorting, and pagination.
 
             Query parameters:
@@ -770,7 +770,7 @@ class PromptServer():
                         status=400
                     )
 
-            running, queued = self.prompt_queue.get_current_queue_volatile()
+            running, queued = self.prompt_queue.get_current_queue_volatile()  # 获取当前队列信息
             history = self.prompt_queue.get_history()
 
             running = _remove_sensitive_from_queue(running)
@@ -867,14 +867,14 @@ class PromptServer():
                 self.number += 1  # 任务数+1
 
             if "prompt" in json_data:
-                prompt = json_data["prompt"]
-                prompt_id = str(json_data.get("prompt_id", uuid.uuid4()))
+                prompt = json_data["prompt"]  # 包含完整节点信息的字典，key为字符串类型的节点ID数值
+                prompt_id = str(json_data.get("prompt_id", uuid.uuid4()))  # 获取prompt_id，如果json_data中没有prompt_id，则生成一个唯一的UUID
 
-                partial_execution_targets = None
+                partial_execution_targets = None  # 部分执行目标，用于指定部分节点执行，而不是整个工作流执行
                 if "partial_execution_targets" in json_data:
-                    partial_execution_targets = json_data["partial_execution_targets"]
+                    partial_execution_targets = json_data["partial_execution_targets"]  # 获取部分执行目标
 
-                valid = await execution.validate_prompt(prompt_id, prompt, partial_execution_targets)
+                valid = await execution.validate_prompt(prompt_id, prompt, partial_execution_targets)  # 验证prompt是否有效
                 extra_data = {}
                 if "extra_data" in json_data:
                     extra_data = json_data["extra_data"]
@@ -882,13 +882,13 @@ class PromptServer():
                 if "client_id" in json_data:
                     extra_data["client_id"] = json_data["client_id"]
                 if valid[0]:
-                    outputs_to_execute = valid[2]
+                    outputs_to_execute = valid[2]  # 获取需要执行的输出型节点ID列表
                     sensitive = {}
                     for sensitive_val in execution.SENSITIVE_EXTRA_DATA_KEYS:
                         if sensitive_val in extra_data:
                             sensitive[sensitive_val] = extra_data.pop(sensitive_val)
                     extra_data["create_time"] = int(time.time() * 1000)  # timestamp in milliseconds
-                    self.prompt_queue.put((number, prompt_id, prompt, extra_data, outputs_to_execute, sensitive))
+                    self.prompt_queue.put((number, prompt_id, prompt, extra_data, outputs_to_execute, sensitive))  # 将任务添加到任务队列中
                     response = {"prompt_id": prompt_id, "number": number, "node_errors": valid[3]}
                     return web.json_response(response)
                 else:
@@ -1002,7 +1002,7 @@ class PromptServer():
 
         # Add routes from web extensions.
         for name, dir in nodes.EXTENSION_WEB_DIRS.items():
-            self.app.add_routes([web.static('/extensions/' + name, dir)])  # 为每个扩展添加静态文件路由
+            self.app.add_routes([web.static('/extensions/' + name, dir)])  # 为自定义节点中的扩展添加静态文件路由
 
         installed_templates_version = FrontendManager.get_installed_templates_version()
         use_legacy_templates = True
@@ -1035,7 +1035,7 @@ class PromptServer():
         if embedded_docs_path:
             self.app.add_routes([
                 web.static('/docs', embedded_docs_path)
-            ])
+            ])  # 将嵌入的文档从包中提供
 
         self.app.add_routes([
             web.static('/', self.web_root),

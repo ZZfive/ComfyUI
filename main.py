@@ -219,7 +219,7 @@ def prompt_worker(q, server_instance):
         if queue_item is not None:  # 如果获取到任务
             item, item_id = queue_item  # 解包任务
             execution_start_time = time.perf_counter()  # 记录开始时间
-            prompt_id = item[1]  # 获取prompt_id；item的格式为(number, prompt_id, prompt, extra_data, outputs_to_execute)
+            prompt_id = item[1]  # 获取prompt_id；item的格式为(number, prompt_id, prompt, extra_data, outputs_to_execute, sensitive)
             server_instance.last_prompt_id = prompt_id  # 更新last_prompt_id
 
             sensitive = item[5]

@@ -76,7 +76,7 @@ class ModelFileManager:
             except:
                 return web.Response(status=404)
 
-    def get_model_file_list(self, folder_name: str):
+    def get_model_file_list(self, folder_name: str):  # 缓存逻辑的模型文件列表获取
         folder_name = map_legacy(folder_name)
         folders = folder_paths.folder_names_and_paths[folder_name]
         output_list: list[dict] = []
@@ -109,7 +109,7 @@ class ModelFileManager:
 
         return model_file_list_cache
 
-    def recursive_search_models_(self, directory: str, pathIndex: int) -> tuple[list[str], dict[str, float], float]:
+    def recursive_search_models_(self, directory: str, pathIndex: int) -> tuple[list[str], dict[str, float], float]:  # 递归搜索模型文件列表
         if not os.path.isdir(directory):
             return [], {}, time.perf_counter()
 
@@ -157,7 +157,7 @@ class ModelFileManager:
 
         return result, dirs, time.perf_counter()
 
-    def get_model_previews(self, filepath: str) -> list[str | BytesIO]:
+    def get_model_previews(self, filepath: str) -> list[str | BytesIO]:  # 获取模型预览图像
         dirname = os.path.dirname(filepath)
 
         if not os.path.exists(dirname):
@@ -165,7 +165,7 @@ class ModelFileManager:
 
         basename = os.path.splitext(filepath)[0]
         match_files = glob.glob(f"{basename}.*", recursive=False)
-        image_files = filter_files_content_types(match_files, "image")
+        image_files = filter_files_content_types(match_files, "image")  # 过滤文件，只保留符合指定数据类型的文件
         safetensors_file = next(filter(lambda x: x.endswith(".safetensors"), match_files), None)
         safetensors_metadata = {}
 

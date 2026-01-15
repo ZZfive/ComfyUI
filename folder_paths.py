@@ -11,7 +11,7 @@ from comfy.cli_args import args
 
 supported_pt_extensions: set[str] = {'.ckpt', '.pt', '.pt2', '.bin', '.pth', '.safetensors', '.pkl', '.sft'}  # 支持的模型文件扩展名
 
-folder_names_and_paths: dict[str, tuple[list[str], set[str]]] = {}  # value是一个元组，第一个元素是存放一种数据类型的路径列表，一种数据类型可以存储在多个路径下，第二个元素也是一个列表，存放对应该数据类型支持的文件扩展名
+folder_names_and_paths: dict[str, tuple[list[str], set[str]]] = {}  # value是一个元组，第一个元素是存放一种数据类型的路径列表，一种数据类型可以存储在多个路径下，第二个元素也是一个集合，存放对应该数据类型支持的文件扩展名
 
 # --base-directory - Resets all default pahts configured in folder_paths with a new base path
 if args.base_directory:  # 如果指定了--base-directory参数，则使用指定的路径作为基础路径

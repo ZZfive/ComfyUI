@@ -672,10 +672,10 @@ class PromptExecutor:
     async def execute_async(self, prompt, prompt_id, extra_data={}, execute_outputs=[]):
         set_preview_method(extra_data.get("preview_method"))
 
-        nodes.interrupt_processing(False)
+        nodes.interrupt_processing(False)  # 设置当前处理任务为非中断状态
 
         if "client_id" in extra_data:
-            self.server.client_id = extra_data["client_id"]  # 更新当前处理任务对应的客户端ID
+            self.server.client_id = extra_data["client_id"]  # 更新服务对象中的当前处理任务对应的客户端ID
         else:
             self.server.client_id = None
 
@@ -689,7 +689,7 @@ class PromptExecutor:
             is_changed_cache = IsChangedCache(prompt_id, dynamic_prompt, self.caches.outputs)
             for cache in self.caches.all:
                 await cache.set_prompt(dynamic_prompt, prompt.keys(), is_changed_cache)
-                cache.clean_unused()
+                cache.clean_unused()  # 清理无用的缓存
 
             cached_nodes = []  # 记录可以复用的缓存节点ID
             for node_id in prompt:
@@ -745,8 +745,8 @@ class PromptExecutor:
 
 
 async def validate_inputs(prompt_id, prompt, item, validated):
-    unique_id = item
-    if unique_id in validated:
+    unique_id = item  # 当前节点的ID
+    if unique_id in validated:  # 如果当前节点ID已经在验证结果中，则直接返回验证结果
         return validated[unique_id]
 
     inputs = prompt[unique_id]['inputs']
@@ -758,12 +758,12 @@ async def validate_inputs(prompt_id, prompt, item, validated):
 
     validate_function_inputs = []
     validate_has_kwargs = False
-    if issubclass(obj_class, _ComfyNodeInternal):
+    if issubclass(obj_class, _ComfyNodeInternal):  # 如果当前节点是V3-based API
         class_inputs, _, _ = obj_class.INPUT_TYPES(include_hidden=False, return_schema=True, live_inputs=inputs)
         validate_function_name = "validate_inputs"
         validate_function = first_real_override(obj_class, validate_function_name)
     else:
-        class_inputs = obj_class.INPUT_TYPES()
+        class_inputs = obj_class.INPUT_TYPES()  # 从节点类的定义中获取输入参数的具体信息
         validate_function_name = "VALIDATE_INPUTS"
         validate_function = getattr(obj_class, validate_function_name, None)
     if validate_function is not None:
@@ -772,11 +772,11 @@ async def validate_inputs(prompt_id, prompt, item, validated):
         validate_has_kwargs = argspec.varkw is not None
     received_types = {}
 
-    valid_inputs = set(class_inputs.get('required',{})).union(set(class_inputs.get('optional',{})))
+    valid_inputs = set(class_inputs.get('required',{})).union(set(class_inputs.get('optional',{})))  # 获取当前节点定义的required和optional输入参数
 
     for x in valid_inputs:  # 校验prompt中节点的inputs是否与定义的required_inputs对齐
         input_type, input_category, extra_info = get_input_info(obj_class, x, class_inputs)  # 从节点类的定义中获取输入参数的类型、类别和额外信息
-        assert extra_info is not None
+        assert extra_info is not None  # extra_info不能为None
         if x not in inputs:  # 如果节点定义中的要求的输入参数不在当前prompt工作流中定义的节点输入参数中
             if input_category == "required":  # 如果输入参数是required输入
                 error = {
@@ -790,10 +790,10 @@ async def validate_inputs(prompt_id, prompt, item, validated):
                 errors.append(error)  # 将错误信息添加到errors列表中
             continue
 
-        val = inputs[x]
+        val = inputs[x]  # 获取当前节点下遍历的参数x在传入工作流中的值
         info = (input_type, extra_info)
         if isinstance(val, list):  # 对来自于其他节点的输出进行校验，即节点中的link节点
-            if len(val) != 2:  # 如果输入参数是一个列表，并且列表长度不为2，则报错
+            if len(val) != 2:  # 输入参数是一个列表，长度必须为2，否则报错
                 error = {
                     "type": "bad_linked_input",
                     "message": "Bad linked input, must be a length-2 list of [node_id, slot_index]",
@@ -807,7 +807,7 @@ async def validate_inputs(prompt_id, prompt, item, validated):
                 errors.append(error)
                 continue
 
-            o_id = val[0]  # 获取输入参数的来源节点id
+            o_id = val[0]  # 获取当前遍历的输入参数的来源节点id
             o_class_type = prompt[o_id]['class_type']  # 获取输入参数来源节点的类型名
             r = nodes.NODE_CLASS_MAPPINGS[o_class_type].RETURN_TYPES  # 获取输入参数来源节点的输出类型
             received_type = r[val[1]]  # 获取输入参数来源节点的输出类型中的具体类型
@@ -828,7 +828,7 @@ async def validate_inputs(prompt_id, prompt, item, validated):
                 errors.append(error)  # 将错误信息添加到errors列表中
                 continue
             try:
-                r = await validate_inputs(prompt_id, prompt, o_id, validated)
+                r = await validate_inputs(prompt_id, prompt, o_id, validated)  # 递归验证
                 if r[0] is False:
                     # `r` will be set in `validated[o_id]` already
                     valid = False
@@ -973,9 +973,9 @@ async def validate_inputs(prompt_id, prompt, item, validated):
                     continue
 
     if len(errors) > 0 or valid is not True:
-        ret = (False, errors, unique_id)  # 如果验证失败，则返回False和错误信息
+        ret = (False, errors, unique_id)  # 如果验证存在失败项，则返回False和错误信息
     else:
-        ret = (True, [], unique_id)  # 如果验证成功，则返回True和空列表
+        ret = (True, [], unique_id)  # 如果验证不存在失败项，则返回True和空列表
 
     validated[unique_id] = ret  # 将验证结果添加到validated字典中
     return ret
@@ -989,7 +989,7 @@ def full_type_name(klass):
 async def validate_prompt(prompt_id, prompt, partial_execution_list: Union[list[str], None]):
     outputs = set()
     for x in prompt:
-        if 'class_type' not in prompt[x]:
+        if 'class_type' not in prompt[x]:  # 必须包含class_type属性，用于标识节点类型
             error = {
                 "type": "invalid_prompt",
                 "message": "Cannot execute because a node is missing the class_type property.",
@@ -1009,11 +1009,11 @@ async def validate_prompt(prompt_id, prompt, partial_execution_list: Union[list[
             }
             return (False, error, [], {})
 
-        if hasattr(class_, 'OUTPUT_NODE') and class_.OUTPUT_NODE is True:
-            if partial_execution_list is None or x in partial_execution_list:
-                outputs.add(x)
+        if hasattr(class_, 'OUTPUT_NODE') and class_.OUTPUT_NODE is True:  # 如果是输出型节点
+            if partial_execution_list is None or x in partial_execution_list:  # 如果部分执行节点列表为空或当前节点在部分执行节点列表中
+                outputs.add(x)  # 将当前节点添加到输出节点集合中
 
-    if len(outputs) == 0:  # 整个workflow中必须有一个输出属性的节点如SaveImage，将生成的结果向外输出，不然直接报错
+    if len(outputs) == 0:  # 整个workflow中必须有一个输出型节点，如SaveImage，用于将生成的结果向外输出，不然直接报错
         error = {
             "type": "prompt_no_outputs",
             "message": "Prompt has no outputs",
@@ -1030,9 +1030,9 @@ async def validate_prompt(prompt_id, prompt, partial_execution_list: Union[list[
         valid = False
         reasons = []
         try:
-            m = await validate_inputs(prompt_id, prompt, o, validated)
-            valid = m[0]
-            reasons = m[1]
+            m = await validate_inputs(prompt_id, prompt, o, validated)  # 验证当前输出型节点的输入参数是否有效
+            valid = m[0]  # 是否验证成功
+            reasons = m[1]  # 验证失败的原因
         except Exception as ex:
             typ, _, tb = sys.exc_info()
             valid = False
@@ -1077,7 +1077,7 @@ async def validate_prompt(prompt_id, prompt, partial_execution_list: Union[list[
                     node_errors[node_id]["dependent_outputs"].append(o)
             logging.error("Output will be ignored")  # 没有校验成功的输出类节点会被忽视
 
-    if len(good_outputs) == 0:  # 一个工作流中必须包含验证成功的输出类接节点，如果数量为0，记录具体错误信息并返回
+    if len(good_outputs) == 0:  # 一个工作流中必须包含验证成功的输出型节点，如果数量为0，记录具体错误信息并返回
         errors_list = []
         for o, errors in errors:
             for error in errors:
