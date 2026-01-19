@@ -685,7 +685,10 @@ class PromptServer():
 
         @routes.get("/object_info")
         async def get_object_info(request):  # 获取所有节点信息接口
-            seed_assets(["models"])
+            try:
+                seed_assets(["models"])
+            except Exception as e:
+                logging.error(f"Failed to seed assets: {e}")
             with folder_paths.cache_helper:
                 out = {}
                 for x in nodes.NODE_CLASS_MAPPINGS:
